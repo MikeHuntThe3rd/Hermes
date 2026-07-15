@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 mod handlers;
 mod types;
 
@@ -6,8 +8,6 @@ use tower_http::services::{ServeDir, ServeFile};
 use dotenvy::dotenv;
 
 use handlers::{post::*};
-
-
 
 
 #[tokio::main]
