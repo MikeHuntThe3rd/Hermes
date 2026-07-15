@@ -12,13 +12,13 @@ pub trait Bindable<T> {
         -> QueryAs<'lftm, Postgres, T, PgArguments>;
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct UninitializedUser {
     pub username: String,
     pub password: String,
 }
 
-#[derive(sqlx::FromRow, Serialize)]
+#[derive(sqlx::FromRow, Serialize, Deserialize)]
 pub struct User {
     pub id: Uuid,
     pub username: String,

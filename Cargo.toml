@@ -9,5 +9,5 @@ tower-http = { version = "0.7", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "uuid"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-axum = "0.8.9"
+axum = { version = "0.8.9", features = ["macros"] }
 dotenvy = "0.15.7"

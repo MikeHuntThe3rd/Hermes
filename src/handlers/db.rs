@@ -1,4 +1,4 @@
-use sqlx::{Pool, Postgres, postgres::{PgConnectOptions, PgPoolOptions}};
+use sqlx::{FromRow, Pool, Postgres, postgres::{PgConnectOptions, PgPoolOptions, PgRow}};
 use crate::types::*;
 
 pub struct DbInterface {
@@ -22,22 +22,16 @@ impl DbInterface {
         return Ok(DbInterface{ options: opt, pool: conn_pool});
     }
 
-    pub async fn generic_query(&self, usr: &str, pswr: &str) {
-        sqlx::query("INSERT INTO users (username, password) VALUES ($1, $2);")
-        .bind(usr)
-        .bind(pswr)
-        .execute(&self.pool)
-        .await.unwrap();
-    }
-
-    pub async fn insert<O, T: Bindable<O>>(&self, data: T) -> Result<O, sqlx::Error> {
+    pub async fn insert<O, T>(&self, data: T) -> Result<O, sqlx::Error>
+    where O: for<'r> FromRow<'r, PgRow> + Send + Unpin, T: Bindable<O>
+    {
         let cols = T::columns().join(", ");
 
         let vals: Vec<String>= (1..=T::columns().len())
         .map(|i| format!("${}", i))
         .collect();
 
-        let returning = if T::columns()[0] == "id" { cols } 
+        let returning = if T::columns()[0] == "id" { cols.clone() } 
         else { [ &["id"], T::columns()].concat().join(", ") };
 
         let sql = format!("INSERT INTO {} ({}) VALUES ({}) RETURNING {};", T::table_name(), cols, vals.join(", "), returning);
