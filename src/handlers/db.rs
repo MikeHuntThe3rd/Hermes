@@ -1,4 +1,5 @@
-use sqlx::{Pool, Postgres, postgres::{PgPoolOptions, PgConnectOptions}};
+use sqlx::{Pool, Postgres, postgres::{PgConnectOptions, PgPoolOptions}};
+use crate::types::*;
 
 pub struct DbInterface {
     options: PgConnectOptions,
@@ -10,8 +11,8 @@ impl DbInterface {
         let opt = PgConnectOptions::new()
         .host("localhost")
         .port(5432)
-        .username("postgres")
-        .password("lol no")
+        .username(&std::env::var("PS_USERNAME").expect("a PS_USERNAME enviroment variable is expected"))
+        .password(&std::env::var("PS_PASSWORD").expect("a PS_PASSWORD enviroment variable is expected"))
         .database("records_ps");
 
         let conn_pool = PgPoolOptions::new()
@@ -27,5 +28,22 @@ impl DbInterface {
         .bind(pswr)
         .execute(&self.pool)
         .await.unwrap();
+    }
+
+    pub async fn insert<O, T: Bindable<O>>(&self, data: T) -> Result<O, sqlx::Error> {
+        let cols = T::columns().join(", ");
+
+        let vals: Vec<String>= (1..=T::columns().len())
+        .map(|i| format!("${}", i))
+        .collect();
+
+        let returning = if T::columns()[0] == "id" { cols } 
+        else { [ &["id"], T::columns()].concat().join(", ") };
+
+        let sql = format!("INSERT INTO {} ({}) VALUES ({}) RETURNING {};", T::table_name(), cols, vals.join(", "), returning);
+        
+        let query = data.bind_values(sqlx::query_as(&sql));
+        let res = query.fetch_one(&self.pool).await?;
+        Ok(res)
     }
 }

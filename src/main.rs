@@ -3,6 +3,7 @@ mod types;
 
 use axum::{routing::{get, post}, Router, Json};
 use tower_http::services::{ServeDir, ServeFile};
+use dotenvy::dotenv;
 
 use handlers::{post::*};
 
@@ -11,6 +12,8 @@ use handlers::{post::*};
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().expect("a .env file is expected");
+    
     let api = Router::<()>::new()
     .route("/add_user", post(add_user));
 
