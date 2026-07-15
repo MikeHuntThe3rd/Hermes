@@ -1,11 +1,8 @@
-#![allow(warnings)]
-
 mod handlers;
 mod types;
 
 use axum::{routing::{get, post}, Router, Json};
 use tower_http::services::{ServeDir, ServeFile};
-use dotenvy::dotenv;
 
 use handlers::{post::*};
 

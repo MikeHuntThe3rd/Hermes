@@ -9,6 +9,6 @@ pub async fn add_user(Json(data): Json<UninitializedUser>) -> Result<Json<User>,
 
     return match inf.insert(data).await {
         Ok(usr) => Ok(Json(usr)),
-        Err(e) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(_e) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
