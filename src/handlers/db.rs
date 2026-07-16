@@ -22,21 +22,18 @@ impl DbInterface {
         return Ok(DbInterface{ options: opt, pool: conn_pool});
     }
 
-    pub async fn insert<O, T>(&self, data: T) -> Result<O, sqlx::Error>
-    where O: for<'r> FromRow<'r, PgRow> + Send + Unpin, T: Bindable<O>
+    pub async fn insert<T>(&self, data: T) -> Result<T, sqlx::Error>
+    where T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
+        let stripped_cols = T::id_stripped_columns().join(", ");
         let cols = T::columns().join(", ");
 
-        let vals: Vec<String>= (1..=T::columns().len())
+        let vals: Vec<String>= (1..=T::id_stripped_columns().len())
         .map(|i| format!("${}", i))
         .collect();
 
-        let returning = if T::columns()[0] == "id" { cols.clone() } 
-        else { [ &["id"], T::columns()].concat().join(", ") };
-
-        let sql = format!("INSERT INTO {} ({}) VALUES ({}) RETURNING {};", T::table_name(), cols, vals.join(", "), returning);
-        
-        let query = data.bind_values(sqlx::query_as(&sql));
+        let sql = format!("INSERT INTO {} ({}) VALUES ({}) RETURNING {};", T::table_name(), stripped_cols, vals.join(", "), cols);
+        let query = data.bind_values(sqlx::query_as(&sql), false);
         let res = query.fetch_one(&self.pool).await?;
         Ok(res)
     }

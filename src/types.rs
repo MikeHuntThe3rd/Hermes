@@ -2,49 +2,55 @@ use serde::{Serialize, Deserialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
 use uuid::Uuid;
 
-pub trait Bindable<T> {
+pub trait Bindable {
     fn table_name() -> &'static str;
+    fn id_stripped_columns() -> &'static [&'static str];
     fn columns() -> &'static [&'static str];
 
     fn bind_values<'lftm>(
         &'lftm self,
-        query: QueryAs<'lftm, Postgres, T, PgArguments>)
-        -> QueryAs<'lftm, Postgres, T, PgArguments>;
+        query: QueryAs<'lftm, Postgres, Self, PgArguments>,
+        bind_id: bool)
+        -> QueryAs<'lftm, Postgres, Self, PgArguments>
+        where Self: Sized;
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct UninitializedUser {
+#[derive(sqlx::FromRow, Serialize, Deserialize)]
+pub struct User {
+    pub id: Option<Uuid>,
     pub username: String,
     pub password: String,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize)]
-pub struct User {
+pub struct Group {
     pub id: Uuid,
-    pub username: String,
-    pub password: String,
+    pub name: String,
+    pub is_dm: bool,
 }
 
-impl Bindable<User> for UninitializedUser {
+#[derive(sqlx::FromRow, Serialize, Deserialize)]
+pub struct Message {
+    pub id: i32,
+    pub message: String,
+    pub files: Vec<Vec<u8>>,
+    pub group_id: Uuid,
+    pub user_id: Uuid,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize)]
+pub struct GroupMembers {
+    pub group_id: Uuid,
+    pub member_id: Uuid,
+}
+
+impl Bindable for User {
     fn table_name() -> &'static str {
         return "users";
     }
 
-    fn columns() -> &'static [&'static str] {
+    fn id_stripped_columns() -> &'static [&'static str] {
         return &["username", "password"];
-    }
-
-    fn bind_values<'lftm>(
-        &'lftm self,
-        query: QueryAs<'lftm, Postgres, User, PgArguments>)
-        -> QueryAs<'lftm, Postgres, User, PgArguments> {
-            return query.bind(&self.username).bind(&self.password);
-        }
-}
-
-impl Bindable<User> for User {
-    fn table_name() -> &'static str {
-        return "users";
     }
 
     fn columns() -> &'static [&'static str] {
@@ -53,8 +59,99 @@ impl Bindable<User> for User {
 
     fn bind_values<'lftm>(
         &'lftm self,
-        query: QueryAs<'lftm, Postgres, User, PgArguments>)
-        -> QueryAs<'lftm, Postgres, User, PgArguments> {
-            return query.bind(&self.id).bind(&self.username).bind(&self.password);
+        query: QueryAs<'lftm, Postgres, Self, PgArguments>,
+        bind_id: bool)
+        -> QueryAs<'lftm, Postgres, Self, PgArguments> 
+    {
+        let mut res = query;
+        if bind_id {
+            res = res.bind(&self.id);
         }
+
+        return res.bind(&self.username).bind(&self.password);
+    }
 }
+
+impl Bindable for Group {
+    fn table_name() -> &'static str {
+        return "groups";
+    }
+
+    fn id_stripped_columns() -> &'static [&'static str] {
+        return &["name", "is_dm"];
+    }
+
+    fn columns() -> &'static [&'static str] {
+        return &["id", "name", "is_dm"];
+    }
+
+    fn bind_values<'lftm>(
+        &'lftm self,
+        query: QueryAs<'lftm, Postgres, Self, PgArguments>,
+        bind_id: bool)
+        -> QueryAs<'lftm, Postgres, Self, PgArguments> 
+    {
+        let mut res = query;
+        if bind_id {
+            res = res.bind(&self.id);
+        }
+
+        return res.bind(&self.name).bind(&self.is_dm);
+    }
+}
+
+impl Bindable for Message {
+    fn table_name() -> &'static str {
+        return "messages";
+    }
+
+    fn id_stripped_columns() -> &'static [&'static str] {
+        return &["message", "files", "group_id", "user_id"];
+    }
+
+    fn columns() -> &'static [&'static str] {
+        return &["id", "message", "files", "group_id", "user_id"];
+    }
+
+    fn bind_values<'lftm>(
+        &'lftm self,
+        query: QueryAs<'lftm, Postgres, Self, PgArguments>,
+        bind_id: bool)
+        -> QueryAs<'lftm, Postgres, Self, PgArguments> 
+    {
+        let mut res = query;
+        if bind_id {
+            res = res.bind(&self.id);
+        }
+
+        return res
+        .bind(&self.message)
+        .bind(&self.files)
+        .bind(&self.group_id)
+        .bind(&self.user_id);
+    }
+}
+
+impl Bindable for GroupMembers {
+    fn table_name() -> &'static str {
+        return "group_members";
+    }
+
+    fn id_stripped_columns() -> &'static [&'static str] {
+        return &["group_id", "member_id"];
+    }
+
+    fn columns() -> &'static [&'static str] {
+        return &["group_id", "member_id"];
+    }
+
+    fn bind_values<'lftm>(
+        &'lftm self,
+        query: QueryAs<'lftm, Postgres, Self, PgArguments>,
+        bind_id: bool)
+        -> QueryAs<'lftm, Postgres, Self, PgArguments> 
+    {
+       return query.bind(&self.group_id).bind(&self.member_id);
+    }
+}
+
