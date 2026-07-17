@@ -1,7 +1,7 @@
 mod handlers;
 mod types;
 
-use axum::{routing::{get, post}, Router, Json};
+use axum::{Json, Router, routing::{delete, get, patch, post}};
 use tower_http::services::{ServeDir, ServeFile};
 
 use handlers::{post::*};
@@ -12,7 +12,10 @@ async fn main() {
     dotenvy::dotenv().expect("a .env file is expected");
     
     let api = Router::<()>::new()
-    .route("/add_user", post(add_user));
+    .route("/add_user", post(add_user))
+    .route("/del", delete(del_test))
+    .route("/get", get(get_test))
+    .route("/up", patch(upd_test));
 
     let interface = Router::<()>::new()
     .nest("/apiV1", api)
