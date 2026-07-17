@@ -1,10 +1,11 @@
 mod handlers;
 mod types;
+mod db;
 
-use axum::{Json, Router, routing::{delete, get, patch, post}};
-use tower_http::services::{ServeDir, ServeFile};
+use axum::{Router, routing::{delete, get, patch, post}};
+use tower_http::services::{ServeDir};
 
-use handlers::{post::*};
+use handlers::{post::*, delete::*, get::*, patch::*};
 
 
 #[tokio::main]
@@ -13,9 +14,9 @@ async fn main() {
     
     let api = Router::<()>::new()
     .route("/add_user", post(add_user))
-    .route("/del", delete(del_test))
-    .route("/get", get(get_test))
-    .route("/up", patch(upd_test));
+    .route("/get_user", get(get_test))
+    .route("/delete_user/{user_id}", delete(delete_user))
+    .route("/update_user", patch(upd_test));
 
     let interface = Router::<()>::new()
     .nest("/apiV1", api)

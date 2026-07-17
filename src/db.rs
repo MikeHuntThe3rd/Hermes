@@ -41,27 +41,6 @@ impl DbInterface {
         Ok(res)
     }
 
-    pub async fn delete<I, T>(&self, id_s: &[I]) -> Result<T, sqlx::Error>
-    where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres> + Clone
-    , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
-    {
-        let vals: Vec<String>= (1..=T::id_columns().len())
-        .map(|i| format!("${}", i))
-        .collect();
-
-        let sql = format!("DELETE FROM {} WHERE ({}) = ({}) RETURNING *;"
-        ,T::table_name()
-        ,T::id_columns().join(", ")
-        ,vals.join(", "));
-
-        let mut query = sqlx::query_as(&sql);
-        for val in id_s {
-            query = query.bind(val.clone());
-        }
-        let res = query.fetch_one(&self.pool).await?;
-        Ok(res)
-    }
-
     pub async fn update<T>(&self, data: T) -> Result<T, sqlx::Error>
     where T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
@@ -84,6 +63,27 @@ impl DbInterface {
         Ok(res)
     }
 
+    pub async fn delete<I, T>(&self, id_s: &[I]) -> Result<T, sqlx::Error>
+    where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres> + Clone
+    , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
+    {
+        let vals: Vec<String>= (1..=T::id_columns().len())
+        .map(|i| format!("${}", i))
+        .collect();
+
+        let sql = format!("DELETE FROM {} WHERE ({}) = ({}) RETURNING *;"
+        ,T::table_name()
+        ,T::id_columns().join(", ")
+        ,vals.join(", "));
+
+        let mut query = sqlx::query_as(&sql);
+        for val in id_s {
+            query = query.bind(val.clone());
+        }
+        let res = query.fetch_one(&self.pool).await?;
+        Ok(res)
+    }
+
     pub async fn select<I, T>(&self, id_s: &[I]) -> Result<Vec<T>, sqlx::Error>
     where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres> + Clone
     , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
@@ -92,8 +92,7 @@ impl DbInterface {
         .map(|i| format!("${}", i))
         .collect();
 
-        let sql = format!("SELECT * FROM {};"
-        ,T::table_name());
+        let sql = format!("SELECT * FROM {};", T::table_name());
 
         let mut query: QueryAs<'_, Postgres, T, PgArguments> = sqlx::query_as(&sql);
         for val in id_s {
@@ -102,4 +101,5 @@ impl DbInterface {
         let res = query.fetch_all(&self.pool).await?;
         Ok(res)
     }
+
 }

@@ -1,9 +1,11 @@
 use tokio::sync::OnceCell;
 
-use crate::handlers::db::DbInterface;
+use crate::db::*;
 
-mod db;
+pub mod delete;
+pub mod patch;
 pub mod post;
+pub mod get;
 
 
 pub static INTERFACE: OnceCell<DbInterface> = OnceCell::const_new();

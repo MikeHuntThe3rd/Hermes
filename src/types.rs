@@ -24,6 +24,13 @@ pub trait Bindable {
         where Self: Sized;
 }
 
+#[derive(Serialize)]
+pub struct Response<T>
+{
+    pub success: bool,
+    pub data: Option<T>,
+}
+
 #[derive(sqlx::FromRow, Serialize, Deserialize)]
 pub struct User {
     pub id: Option<Uuid>,
@@ -197,4 +204,6 @@ impl Bindable for GroupMembers {
         return res;
     }
 }
+
+
 
