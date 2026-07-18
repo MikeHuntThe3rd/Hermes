@@ -28,6 +28,7 @@ pub trait Bindable {
 pub struct Response<T>
 {
     pub success: bool,
+    pub msg: String,
     pub data: Option<T>,
 }
 
@@ -48,8 +49,8 @@ pub struct Group {
 #[derive(sqlx::FromRow, Serialize, Deserialize)]
 pub struct Message {
     pub id: Option<i32>,
-    pub message: String,
-    pub files: Vec<Vec<u8>>,
+    pub message: Option<String>,
+    pub files: Option<Vec<Vec<u8>>>,
     pub group_id: Uuid,
     pub user_id: Uuid,
 }

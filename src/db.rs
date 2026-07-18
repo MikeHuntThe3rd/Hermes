@@ -1,6 +1,4 @@
-use sqlx::{Encode, FromRow, Pool, Postgres
-    , postgres::{PgConnectOptions, PgPoolOptions, PgRow, PgArguments}
-    , query::QueryAs};
+use sqlx::{Encode, Execute, FromRow, Pool, Postgres, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::QueryAs};
 use crate::types::*;
 
 pub struct DbInterface {
@@ -64,7 +62,7 @@ impl DbInterface {
     }
 
     pub async fn delete<I, T>(&self, id_s: &[I]) -> Result<T, sqlx::Error>
-    where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres> + Clone
+    where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>
     , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
         let vals: Vec<String>= (1..=T::id_columns().len())
@@ -78,26 +76,44 @@ impl DbInterface {
 
         let mut query = sqlx::query_as(&sql);
         for val in id_s {
-            query = query.bind(val.clone());
+            query = query.bind(val);
         }
         let res = query.fetch_one(&self.pool).await?;
         Ok(res)
     }
 
-    pub async fn select<I, T>(&self, id_s: &[I]) -> Result<Vec<T>, sqlx::Error>
-    where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres> + Clone
+    pub async fn select<I, T>(&self, id_s: Option<(&[&str], &[I])>) -> Result<Vec<T>, sqlx::Error>
+    where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>
     , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
-        let vals: Vec<String>= (1..=T::id_columns().len())
-        .map(|i| format!("${}", i))
-        .collect();
+        let mut sql = format!("SELECT * FROM {}", T::table_name());
 
-        let sql = format!("SELECT * FROM {};", T::table_name());
+        if let Some(some_id_s) = id_s {
+            if some_id_s.0.len() != some_id_s.1.len() {
+                return Err(sqlx::Error::InvalidArgument("given tuple arrays have different sizes".to_string()));
+            }
+
+            let vals: Vec<String> = (1..=some_id_s.0.len())
+            .map(|i| format!("${}", i))
+            .collect();
+
+            sql = format!("{} WHERE ({}) = ({});"
+            , sql
+            , some_id_s.0.join(", ")
+            , vals.join(", "));
+        }
+        else {
+            sql += ";";
+        }
 
         let mut query: QueryAs<'_, Postgres, T, PgArguments> = sqlx::query_as(&sql);
-        for val in id_s {
-            query = query.bind(val.clone());
+
+        if let Some(some_id_s) = id_s {
+            for val in some_id_s.1 {
+                query = query.bind(val);
+            }
         }
+
         let res = query.fetch_all(&self.pool).await?;
         Ok(res)
     }

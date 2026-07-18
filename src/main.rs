@@ -5,7 +5,10 @@ mod db;
 use axum::{Router, routing::{delete, get, patch, post}};
 use tower_http::services::{ServeDir};
 
-use handlers::{post::*, delete::*, get::*, patch::*};
+use handlers::{post::*
+    , delete::*
+    , get::*
+    , patch::*};
 
 
 #[tokio::main]
@@ -14,9 +17,9 @@ async fn main() {
     
     let api = Router::<()>::new()
     .route("/add_user", post(add_user))
-    .route("/get_user", get(get_test))
+    .route("/get_user/{user_id}", get(get_user))
     .route("/delete_user/{user_id}", delete(delete_user))
-    .route("/update_user", patch(upd_test));
+    .route("/update_user", patch(update_user));
 
     let interface = Router::<()>::new()
     .nest("/apiV1", api)
