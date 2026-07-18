@@ -10,7 +10,7 @@ pub async fn update_user(Json(data): Json<User>) ->(StatusCode, Json<Response<Us
         Ok(usr) => (StatusCode::OK
             , Json(Response{success: true, msg: String::new(), data: Some(usr)})),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR
-            , Json(Response{success: true, msg: e.to_string(), data: None})),
+            , Json(Response{success: false, msg: e.to_string(), data: None})),
     }
 }
 

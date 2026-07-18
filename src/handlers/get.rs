@@ -12,7 +12,7 @@ pub async fn get_user(Path(user_id) : Path<Uuid>) -> (StatusCode, Json<Response<
         Ok(usr) => (StatusCode::OK
             , Json(Response{success: true, msg: String::new(), data: Some(usr)})),
         Err(e) => (StatusCode::NOT_FOUND
-            , Json(Response{success: true, msg: e.to_string(), data: None})),
+            , Json(Response{success: false, msg: e.to_string(), data: None})),
     }
 }
 
