@@ -1,3 +1,4 @@
+use derive_macros::Bindable;
 use serde::{Serialize, Deserialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
 use uuid::Uuid;
@@ -32,7 +33,8 @@ pub struct Response<T>
     pub data: Option<T>,
 }
 
-#[derive(sqlx::FromRow, Serialize, Deserialize)]
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "id"]
 pub struct User {
     pub id: Option<Uuid>,
     pub username: String,
@@ -62,41 +64,41 @@ pub struct GroupMembers {
 }
 
 //impls
-impl Bindable for User {
-    fn table_name() -> &'static str {
-        return "users";
-    }
+// impl Bindable for User {
+//     fn table_name() -> &'static str {
+//         return "users";
+//     }
 
-    fn id_columns() -> &'static [&'static str] {
-        return &["id"];
-    }
+//     fn id_columns() -> &'static [&'static str] {
+//         return &["id"];
+//     }
 
-    fn base_columns() -> &'static [&'static str] {
-        return &["username", "password"];
-    }
+//     fn base_columns() -> &'static [&'static str] {
+//         return &["username", "password"];
+//     }
 
-    fn columns() -> &'static [&'static str] {
-        return &["id", "username", "password"];
-    }
+//     fn columns() -> &'static [&'static str] {
+//         return &["id", "username", "password"];
+//     }
 
-    fn bind_values<'lftm>(
-        &'lftm self,
-        query: QueryAs<'lftm, Postgres, Self, PgArguments>,
-        bind_val: BindVal)
-        -> QueryAs<'lftm, Postgres, Self, PgArguments> 
-    {
-        let mut res = query;
+//     fn bind_values<'lftm>(
+//         &'lftm self,
+//         query: QueryAs<'lftm, Postgres, Self, PgArguments>,
+//         bind_val: BindVal)
+//         -> QueryAs<'lftm, Postgres, Self, PgArguments> 
+//     {
+//         let mut res = query;
         
-        if bind_val == BindVal::ID {
-            return res.bind(&self.id);
-        }
-        else if bind_val == BindVal::ALL {
-            res = res.bind(&self.id);
-        }
+//         if bind_val == BindVal::ID {
+//             return res.bind(&self.id);
+//         }
+//         else if bind_val == BindVal::ALL {
+//             res = res.bind(&self.id);
+//         }
 
-        return res.bind(&self.username).bind(&self.password);
-    }
-}
+//         return res.bind(&self.username).bind(&self.password);
+//     }
+// }
 
 impl Bindable for Group {
     fn table_name() -> &'static str {
