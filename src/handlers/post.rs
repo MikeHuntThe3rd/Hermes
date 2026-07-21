@@ -25,10 +25,10 @@ pub async fn add_group(Json(data): Json<Group>) -> (StatusCode, Json<Response<Gr
     }
 }
 
-pub async fn add_group_member(Json(data): Json<GroupMember>) -> (StatusCode, Json<Response<GroupMember>>) {
+pub async fn add_group_member(Json(data): Json<Group_Member>) -> (StatusCode, Json<Response<Group_Member>>) {
     let inf = get_db_interface().await;
 
-    return match inf.insert::<GroupMember>(data).await {
+    return match inf.insert::<Group_Member>(data).await {
         Ok(grp_mem) => (StatusCode::CREATED
             , Json(Response{success: true, msg: String::new(), data: Some(grp_mem)})),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR

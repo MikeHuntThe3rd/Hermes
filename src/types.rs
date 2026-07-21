@@ -62,7 +62,7 @@ pub struct Message {
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "group_id;member_id"]
 #[include_ids(true)]
-pub struct Group_Members {
+pub struct Group_Member {
     pub group_id: Uuid,
     pub member_id: Uuid,
 }

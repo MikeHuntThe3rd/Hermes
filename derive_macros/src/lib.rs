@@ -29,7 +29,7 @@ fn implement_trait(vals: &syn::DeriveInput) -> TokenStream {
 
     for attrib in &vals.attrs {
         if let Meta::List(flag) = &attrib.meta && 
-        flag.path.is_ident("exclude_ids") && 
+        flag.path.is_ident("include_ids") && 
         flag.tokens.to_string().contains("true") {
             include_flagged = true;
             continue;
