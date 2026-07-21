@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use proc_macro::TokenStream;
+use proc_macro::{Ident, TokenStream};
 use quote::quote;
 use syn::{self, Data, Expr, Fields, Lit, Meta};
 
@@ -50,6 +50,8 @@ fn implement_trait(vals: &syn::DeriveInput) -> TokenStream {
     }
 
     let name = &vals.ident;
+    let table_name = vals.ident.to_string().to_lowercase() + "s";
+
     let all_col_idents: Vec<syn::Ident> = fields.named
     .iter()
     .map(|field| field.ident.clone().expect("all fields are expected to be named"))
@@ -67,7 +69,7 @@ fn implement_trait(vals: &syn::DeriveInput) -> TokenStream {
         }
     }
 
-    for col_ident in all_col_idents {
+    for col_ident in &all_col_idents {
         if let Some(id_name) = id_col_names.iter().find(|id_name| id_name.to_string() == col_ident.to_string()) {
             id_col_idents.push(col_ident.clone());
             all_col_names.push(col_ident.to_string());
@@ -84,22 +86,30 @@ fn implement_trait(vals: &syn::DeriveInput) -> TokenStream {
         }
     }
 
+    let static_ids = to_static_helper(id_col_names);
+    let static_bases = to_static_helper(base_col_names);
+    let static_all = to_static_helper(all_col_names);
+
+   let bind_id = quote! { res #(.bind(&self.#id_col_idents))* };
+    let bind_base = quote! { res #(.bind(&self.#base_col_idents))* };
+    let bind_all = quote! { res #(.bind(&self.#all_col_idents))* };
+
     let mut code = quote! {
         impl Bindable for #name {
             fn table_name() -> &'static str {
-                return "users";
+                return #table_name;
             }
 
             fn id_columns() -> &'static [&'static str] {
-                return &["id"];
+                return &[#(#static_ids), *];
             }
 
             fn base_columns() -> &'static [&'static str] {
-                return &["username", "password"];
+                return &[#(#static_bases), *];
             }
 
             fn columns() -> &'static [&'static str] {
-                return &["id", "username", "password"];
+                return &[#(#static_all), *];
             }
 
             fn bind_values<'lftm>(
@@ -109,15 +119,14 @@ fn implement_trait(vals: &syn::DeriveInput) -> TokenStream {
                 -> QueryAs<'lftm, Postgres, Self, PgArguments> 
             {
                 let mut res = query;
-                
-                if bind_val == BindVal::ID {
-                    return res.bind(&self.id);
-                }
-                else if bind_val == BindVal::ALL {
-                    res = res.bind(&self.id);
+
+                match bind_val {
+                    BindVal::ID => res = #bind_id,
+                    BindVal::BASE => res = #bind_base,
+                    BindVal::ALL => res = #bind_all,
                 }
 
-                return res.bind(&self.username).bind(&self.password);
+                return res;
             }
         }
     };
@@ -125,3 +134,8 @@ fn implement_trait(vals: &syn::DeriveInput) -> TokenStream {
     return code.into();
 }
 
+fn to_static_helper(vec: Vec<String>) -> &'static [&'static str] {
+    let static_chrs: Vec<&'static str> = vec.into_iter().map(|c| c.leak() as &str).collect();
+
+    return static_chrs.leak();
+}
