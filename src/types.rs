@@ -56,7 +56,7 @@ pub struct Message {
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize)]
-pub struct GroupMembers {
+pub struct GroupMember {
     pub group_id: Uuid,
     pub member_id: Uuid,
 }
@@ -170,9 +170,9 @@ impl Bindable for Message {
     }
 }
 
-impl Bindable for GroupMembers {
+impl Bindable for GroupMember {
      fn table_name() -> &'static str {
-        return "users";
+        return "group_members";
     }
 
     fn id_columns() -> &'static [&'static str] {
@@ -180,7 +180,7 @@ impl Bindable for GroupMembers {
     }
 
     fn base_columns() -> &'static [&'static str] {
-        return &[];
+        return &["group_id", "member_id"];
     }
 
     fn columns() -> &'static [&'static str] {
@@ -202,7 +202,7 @@ impl Bindable for GroupMembers {
             return res.bind(&self.group_id).bind(&self.member_id);
         }
 
-        return res;
+        return res.bind(&self.group_id).bind(&self.member_id);
     }
 }
 

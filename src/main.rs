@@ -17,9 +17,20 @@ async fn main() {
     
     let api = Router::<()>::new()
     .route("/add_user", post(add_user))
+    .route("/add_group", post(add_group))
+    .route("/add_group_member", post(add_group_member))
+    .route("/add_message", post(add_message))
     .route("/get_user/{user_id}", get(get_user))
+    .route("/get_group/{group_id}", get(get_group))
+    .route("/get_group_member/{group_id, member_id}", get(get_group_member))
+    .route("/get_message/{message_id}", get(get_message))
     .route("/delete_user/{user_id}", delete(delete_user))
-    .route("/update_user", patch(update_user));
+    .route("/delete_group/{group_id}", delete(delete_group))
+    .route("/delete_group_member/{group_member_id}", delete(delete_group_member))
+    .route("/delete_message/{message_id}", delete(delete_message))
+    .route("/update_user", patch(update_user))
+    .route("/update_group", patch(update_group))
+    .route("/update_message", patch(update_message));
 
     let interface = Router::<()>::new()
     .nest("/apiV1", api)
