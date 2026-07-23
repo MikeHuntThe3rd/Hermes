@@ -11,4 +11,8 @@ serde = { version = "1", features = ["derive"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "uuid"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 axum = { version = "0.8.9", features = ["macros"] }
+axum-extra = { version = "0.12.6", features = ["typed-header"] }
 dotenvy = "0.15.7"
+jsonwebtoken = "10.4.0"
+time = "0.3.54"
+serde_json = "1.0.151"

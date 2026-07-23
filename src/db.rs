@@ -1,6 +1,7 @@
-use sqlx::{Encode, Execute, FromRow, Pool, Postgres, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::QueryAs};
+use sqlx::{Encode, FromRow, Pool, Postgres, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::QueryAs};
 use crate::types::*;
 
+#[derive(Clone)]
 pub struct DbInterface {
     options: PgConnectOptions,
     pool: Pool<Postgres>,

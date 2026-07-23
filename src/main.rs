@@ -1,21 +1,35 @@
 mod handlers;
+mod auth;
 mod types;
 mod db;
 
 use axum::{Router, routing::{delete, get, patch, post}};
-use tower_http::services::{ServeDir};
+use tower_http::services::{ServeDir, ServeFile};
+use tokio::sync::OnceCell;
 
+use db::DbInterface;
+use types::AppState;
 use handlers::{post::*
     , delete::*
     , get::*
     , patch::*};
 
+pub static APPSTATE: OnceCell<AppState> = OnceCell::const_new();
+
+pub async fn get_app_state() -> &'static AppState {
+    return APPSTATE.get_or_init(|| async {
+        AppState {
+            jwt_secret: vec![],
+            db_interface: DbInterface::new().await.expect("failed to create the db connection"),
+        }
+    }).await;
+}
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().expect("a .env file is expected");
     
-    let api = Router::<()>::new()
+    let api = Router::new()
     .route("/add_user", post(add_user))
     .route("/add_group", post(add_group))
     .route("/add_group_member", post(add_group_member))
@@ -30,7 +44,8 @@ async fn main() {
     .route("/delete_message/{message_id}", delete(delete_message))
     .route("/update_user", patch(update_user))
     .route("/update_group", patch(update_group))
-    .route("/update_message", patch(update_message));
+    .route("/update_message", patch(update_message))
+    .with_state(get_app_state().await.clone());
 
     let interface = Router::<()>::new()
     .nest("/apiV1", api)

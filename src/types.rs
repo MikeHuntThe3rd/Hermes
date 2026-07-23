@@ -1,6 +1,7 @@
 use derive_macros::Bindable;
 use serde::{Serialize, Deserialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
+use crate::db::*;
 use uuid::Uuid;
 
 #[derive(PartialEq)]
@@ -8,6 +9,12 @@ pub enum BindVal {
     ID,
     BASE,
     ALL,
+}
+
+#[derive(Serialize, Deserialize, PartialEq)]
+pub enum TokenType {
+    Access,
+    Refresh,
 }
 
 pub trait Bindable {
@@ -67,3 +74,16 @@ pub struct Group_Member {
     pub member_id: Uuid,
 }
 
+#[derive(Clone)]
+pub struct AppState {
+    pub jwt_secret: Vec<u8>,
+    pub db_interface: DbInterface,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Claims {
+    pub user_id: Uuid,
+    pub issued_t: usize,
+    pub expr_t: usize,
+    pub tkn_type: TokenType,
+}
