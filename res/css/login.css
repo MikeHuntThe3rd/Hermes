@@ -1,0 +1,32 @@
+body{
+    background-color: #afafaf;
+    color: black;
+}
+
+input{
+    font-size: 3vh;
+}
+
+input[type="text"], input[type="password"]{
+    border: none;
+    border-top: 2px solid black;
+    border-left: 2px solid black;
+}
+
+input[type="submit"]{
+    border-color: #cccccc;
+    display: block;
+    margin: 10px auto auto auto;
+    background-color: #afafaf;
+}
+
+#container{
+    padding: 30px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 4vh;
+    background-color: #afafaf;
+    width: fit-content;
+}

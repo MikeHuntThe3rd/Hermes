@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log In</title>
+    <link rel="stylesheet" href="http://localhost:8000/app/mainCss">
+    <link rel="stylesheet" href="http://localhost:8000/app/loginCss">
+</head>
+<body>
+    <nav>
+        <h1>Log In</h1>
+    </nav>
+
+    <!-- Need to add the new user and redirect to the main page -->
+    <div id="container">
+        <form action="http://localhost:8000/app/main">
+            <label for="username">Username</label><br>
+            <input type="text" name="username" placeholder="Username"><br>
+            <label for="password">Password</label><br>
+            <input type="password" name="password" placeholder="Password"><br>
+            <input type="submit" value="Log In">
+        </form>
+
+        <form action="http://localhost:8000/app/signup">
+            <input type="submit" value="Sign Up">
+        </form>
+    </div>
+</body>
+</html>

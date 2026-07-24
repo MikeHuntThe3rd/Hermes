@@ -1,0 +1,22 @@
+body{
+    background-color: #afafaf;
+}
+
+#container{
+    width: 100%;
+}
+
+#message{
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: 90%;
+    transform: translate(-50%, -10%);
+    background-color: black;
+    width: 80%;
+    height: 3vh;
+    font-size: 2vh;
+    padding: 10px;
+    color: white;
+    font-weight: bold;
+}

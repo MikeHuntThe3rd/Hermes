@@ -1,0 +1,28 @@
+body{
+    background: linear-gradient(to top left, #0100b0, #2055f5);
+}
+
+form{
+    margin: auto;
+    width: fit-content;
+}
+
+h1{
+    font-variant: normal;
+    font-size: 5vh;
+}
+
+input{
+    font-size: 3vh;
+    border-color: #c5c5c5;
+}
+
+#container{
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    margin: auto;
+    width: fit-content;
+    height: fit-content;
+}

@@ -2,8 +2,8 @@ mod handlers;
 mod types;
 mod db;
 
-use axum::{Router, routing::{delete, get, patch, post}};
-use tower_http::services::{ServeDir};
+use axum::{Router, routing::{Route, delete, get, patch, post}};
+use tower_http::services::{ServeDir, ServeFile};
 
 use handlers::{post::*
     , delete::*
@@ -32,9 +32,18 @@ async fn main() {
     .route("/update_group", patch(update_group))
     .route("/update_message", patch(update_message));
 
+    let app = Router::<()>::new()
+    .nest_service("/main", ServeDir::new("res/main"))
+    .nest_service("/signup", ServeDir::new("res/signup"))
+    .nest_service("/login", ServeDir::new("res/login"))
+    .nest_service("/mainCss", ServeFile::new("res/css/style.css"))
+    .nest_service("/loginCss", ServeDir::new("res/css/login.css"));
+
     let interface = Router::<()>::new()
     .nest("/apiV1", api)
-    .fallback_service(ServeDir::new("res"));
+    .nest("/app", app)
+    .fallback_service(ServeDir::new("res/welcome"));
+
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8000")
     .await

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Main</title>
+    <link rel="stylesheet" href="http://localhost:8000/app/mainCss">
+    <link rel="stylesheet" href="./main/style.css">
+    <script src="https://unpkg.com/htmx.org@2.0.10"></script>
+    <script src="https://unpkg.com/mustache@latest/mustache.min.js"></script>
+    <script src="https://unpkg.com/htmx-ext-json-enc"></script>
+    <script src="https://unpkg.com/htmx-ext-client-side-templates"></script>
+</head>
+<body>
+    <nav>
+        <h1>DMs</h1>
+    </nav>
+
+    <div id="container">
+        <!-- discordos message textbox -->
+        <form
+            hx-target="#asd" 
+            hx-post="/apiV1/add_msg" 
+            hx-headers='{"Content-Type": "application/json"}' 
+            hx-ext="json-enc, client-side-templates"
+            mustache-template="temp"
+        >
+            <input id="message" type="text" name="text"/>
+        </form>
+        
+        
+        <template id="temp">
+            <p>{{text}}</p>
+        </template>
+        
+        <div style="color: black;" id="asd"></div>
+    </div>
+</body>
+</html>
