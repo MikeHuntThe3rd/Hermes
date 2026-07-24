@@ -87,3 +87,10 @@ pub struct Claims {
     pub expr_t: usize,
     pub tkn_type: TokenType,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct TokenPair {
+    pub access_tkn: String,
+    pub refresh_tkn: String,
+}
+

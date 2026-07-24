@@ -9,6 +9,7 @@ use tokio::sync::OnceCell;
 
 use db::DbInterface;
 use types::AppState;
+use auth::endpoints::*;
 use handlers::{post::*
     , delete::*
     , get::*
@@ -28,8 +29,13 @@ pub async fn get_app_state() -> &'static AppState {
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().expect("a .env file is expected");
+    let state = get_app_state().await.clone();
+
+    let auth = Router::new()
+    .route("/login", post(login));
     
     let api = Router::new()
+    .nest("/auth", auth)
     .route("/add_user", post(add_user))
     .route("/add_group", post(add_group))
     .route("/add_group_member", post(add_group_member))
@@ -45,9 +51,9 @@ async fn main() {
     .route("/update_user", patch(update_user))
     .route("/update_group", patch(update_group))
     .route("/update_message", patch(update_message))
-    .with_state(get_app_state().await.clone());
+    .with_state(state);
 
-    let interface = Router::<()>::new()
+    let interface: Router<()> = Router::new()
     .nest("/apiV1", api)
     .fallback_service(ServeDir::new("res"));
 
