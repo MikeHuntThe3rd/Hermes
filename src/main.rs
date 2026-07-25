@@ -32,7 +32,8 @@ async fn main() {
     let state = get_app_state().await.clone();
 
     let auth = Router::new()
-    .route("/login", post(login));
+    .route("/login", post(login))
+    .route("/refresh", post(refresh));
     
     let api = Router::new()
     .nest("/auth", auth)

@@ -82,15 +82,20 @@ pub struct AppState {
 
 #[derive(Serialize, Deserialize)]
 pub struct Claims {
-    pub user_id: Uuid,
-    pub issued_t: usize,
-    pub expr_t: usize,
+    pub sub: Uuid,
+    pub iat: usize,
+    pub exp: usize,
     pub tkn_type: TokenType,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct TokenPair {
     pub access_tkn: String,
+    pub refresh_tkn: String,
+}
+
+#[derive(Deserialize)]
+pub struct RefreshBody {
     pub refresh_tkn: String,
 }
 

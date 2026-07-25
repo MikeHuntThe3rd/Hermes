@@ -1,12 +1,9 @@
-use axum::{Json, http::StatusCode};
-
+use axum::{Json, http::StatusCode, extract::State};
+use jsonwebtoken::{decode, DecodingKey, Validation};
 use crate::types::*;
-use crate::auth::creation::create_jwt;
-use crate::get_app_state;
+use crate::auth::{creation::create_jwt, errors::AuthError};
 
-pub async fn login(Json(data): Json<User>) -> (StatusCode, Json<Response<TokenPair>>) {
-    let inf = get_app_state().await;
-
+pub async fn login(State(inf): State<AppState>, Json(data): Json<User>) -> (StatusCode, Json<Response<TokenPair>>) {
     let rows: Result<Vec<User>, sqlx::Error> = inf.db_interface
     .select(Some((&vec!["username", "password"], &vec![&data.username, &data.password]))).await;
 
@@ -33,4 +30,22 @@ pub async fn login(Json(data): Json<User>) -> (StatusCode, Json<Response<TokenPa
         Err(error) => (StatusCode::INTERNAL_SERVER_ERROR
             , Json(Response { success: false, msg: error.to_string(), data: None })),
     };
+}
+
+pub async fn refresh(State(inf): State<AppState>, Json(data): Json<RefreshBody>) -> Result<(StatusCode, Json<Response<TokenPair>>), AuthError> {
+    let tkn_data = decode::<Claims>(
+        &data.refresh_tkn, 
+        &DecodingKey::from_secret(&inf.jwt_secret), 
+        &Validation::default()).map_err(|_| AuthError::InvalidToken)?;
+    
+    if tkn_data.claims.tkn_type != TokenType::Refresh {
+        return Err(AuthError::WrongTokenType);
+    }
+
+    let access = create_jwt(tkn_data.claims.sub, TokenType::Access, &inf.jwt_secret).await.map_err(|_| AuthError::MissingToken)?;
+    let refresh = create_jwt(tkn_data.claims.sub, TokenType::Refresh, &inf.jwt_secret).await.map_err(|_| AuthError::MissingToken)?;
+
+    let res = TokenPair{ access_tkn: access, refresh_tkn: refresh };
+
+    return Ok((StatusCode::OK, Json(Response { success: true, msg: String::new(), data: Some(res) })));
 }

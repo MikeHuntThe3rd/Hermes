@@ -15,9 +15,9 @@ pub async fn create_jwt(
     };
 
     let claims = Claims {
-        user_id: user_id,
-        issued_t: current_t.unix_timestamp() as usize,
-        expr_t: expr_t.unix_timestamp() as usize,
+        sub: user_id,
+        iat: current_t.unix_timestamp() as usize,
+        exp: expr_t.unix_timestamp() as usize,
         tkn_type: tkn_type,
     };
 

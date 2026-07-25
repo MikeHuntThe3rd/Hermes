@@ -1,5 +1,4 @@
-use axum::{RequestPartsExt, extract::{FromRef, FromRequestParts}, http::request::Parts
-};
+use axum::{RequestPartsExt, extract::{FromRef, FromRequestParts}, http::request::Parts};
 
 use axum_extra::{
     headers::{authorization::Bearer, Authorization},
@@ -40,7 +39,7 @@ where
         }
 
         Ok(
-            AuthUser { user_id: tkn_data.claims.user_id }
+            AuthUser { user_id: tkn_data.claims.sub }
         )
     }
 }
