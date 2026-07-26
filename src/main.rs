@@ -3,8 +3,11 @@ mod auth;
 mod types;
 mod db;
 
+use std::time::Duration;
+
 use axum::{Router, routing::{delete, get, patch, post}};
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::{ServeDir};
+use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{self, Config, TcpConfig}}};
 use tokio::sync::OnceCell;
 
 use db::DbInterface;
@@ -19,9 +22,27 @@ pub static APPSTATE: OnceCell<AppState> = OnceCell::const_new();
 
 pub async fn get_app_state() -> &'static AppState {
     return APPSTATE.get_or_init(|| async {
+        let conf = Config::from_url("redis://localhost:6379/1").expect("redis binding is expected to succeed");
+        let client = Builder::from_config(conf)
+        .with_connection_config(|config| {
+            config.connection_timeout = Duration::from_secs(1);
+            config.tcp = TcpConfig {
+                nodelay: Some(true),
+                ..Default::default()
+            }
+        }).build().expect("client builder is expected to succeed");
+
+        client.init().await.expect("client init is expected to succeed");
+
+        client.on_error(|(error, server)| async move {
+            println!("{:?}: Connection error: {:?}", server, error);
+            Ok(())
+        });
+        
         AppState {
             jwt_secret: vec![],
             db_interface: DbInterface::new().await.expect("failed to create the db connection"),
+            redis_client: client,
         }
     }).await;
 }
@@ -41,7 +62,7 @@ async fn main() {
     .route("/add_group", post(add_group))
     .route("/add_group_member", post(add_group_member))
     .route("/add_message", post(add_message))
-    .route("/get_user/{user_id}", get(get_user))
+    .route("/get_user", get(get_user))
     .route("/get_group/{group_id}", get(get_group))
     .route("/get_group_member/{group_id, member_id}", get(get_group_member))
     .route("/get_message/{message_id}", get(get_message))

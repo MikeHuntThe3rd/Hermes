@@ -1,4 +1,5 @@
 use derive_macros::Bindable;
+use fred::clients::Client;
 use serde::{Serialize, Deserialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
 use crate::db::*;
@@ -78,11 +79,13 @@ pub struct Group_Member {
 pub struct AppState {
     pub jwt_secret: Vec<u8>,
     pub db_interface: DbInterface,
+    pub redis_client: Client,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Claims {
     pub sub: Uuid,
+    pub jti: Uuid,
     pub iat: usize,
     pub exp: usize,
     pub tkn_type: TokenType,

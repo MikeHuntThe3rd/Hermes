@@ -5,6 +5,7 @@ use axum_extra::{
     TypedHeader,
 };
 
+use fred::interfaces::KeysInterface;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use uuid::Uuid;
 
@@ -37,9 +38,13 @@ where
         if tkn_data.claims.tkn_type != TokenType::Access {
             return Err(AuthError::WrongTokenType);
         }
+        
+        let key = format!("jwt:blacklist:{}", tkn_data.claims.jti);
+        let is_revoked: i64 = app_state.redis_client.exists(key).await.map_err(|_| AuthError::RedisError)?;
+        if is_revoked == 1 {
+            return Err(AuthError::ExpiredToken);
+        }
 
-        Ok(
-            AuthUser { user_id: tkn_data.claims.sub }
-        )
+        return Ok(AuthUser { user_id: tkn_data.claims.sub });
     }
 }

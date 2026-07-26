@@ -1,14 +1,13 @@
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::{Json, http::StatusCode};
 use uuid::Uuid;
 
+use crate::auth::extractor::AuthUser;
 use crate::types::*;
 use crate::get_app_state;
 
-pub async fn get_user(Path(user_id) : Path<Uuid>) -> (StatusCode, Json<Response<Vec<User>>>) {
-    let inf = get_app_state().await;
-
-    return match inf.db_interface.select::<Uuid, User>(Some((&User::id_columns(), &vec![user_id]))).await {
+pub async fn get_user(auth: AuthUser, State(inf): State<AppState>) -> (StatusCode, Json<Response<Vec<User>>>) {
+    return match inf.db_interface.select::<Uuid, User>(Some((&User::id_columns(), &vec![auth.user_id]))).await {
         Ok(usr) => (StatusCode::OK
             , Json(Response{success: true, msg: String::new(), data: Some(usr)})),
         Err(e) => (StatusCode::NOT_FOUND
