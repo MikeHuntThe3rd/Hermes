@@ -10,14 +10,12 @@ pub struct DbInterface {
 impl DbInterface {
     pub async fn new() -> Result<DbInterface, sqlx::Error> {
         let opt = PgConnectOptions::new()
-        .host("localhost")
-        .port(5432)
+        .socket("/run/postgresql")
         .username(&std::env::var("PS_USERNAME").expect("a PS_USERNAME enviroment variable is expected"))
-        .password(&std::env::var("PS_PASSWORD").expect("a PS_PASSWORD enviroment variable is expected"))
         .database("records_ps");
 
         let conn_pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(10)
         .connect_with(opt.clone()).await?;
     
         return Ok(DbInterface{ options: opt, pool: conn_pool});
