@@ -2,49 +2,48 @@ mod handlers;
 mod auth;
 mod types;
 mod db;
+mod res_impls;
 
-use std::time::Duration;
+use std::{path, time::Duration};
 
 use axum::{Router, routing::{delete, get, patch, post}};
 use tower_http::services::{ServeDir};
-use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{self, Config, TcpConfig}}};
-use tokio::sync::OnceCell;
+use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
 
 use db::DbInterface;
 use types::AppState;
 use auth::endpoints::*;
 use handlers::{post::*
-    , delete::*
-    , get::*
-    , patch::*};
+    ,delete::*
+    ,get::*
+    ,patch::*};
 
-pub static APPSTATE: OnceCell<AppState> = OnceCell::const_new();
-
-pub async fn get_app_state() -> &'static AppState {
-    return APPSTATE.get_or_init(|| async {
-        let conf = Config::from_url("redis://localhost:6379/1").expect("redis binding is expected to succeed");
-        let client = Builder::from_config(conf)
-        .with_connection_config(|config| {
-            config.connection_timeout = Duration::from_secs(1);
-            config.tcp = TcpConfig {
-                nodelay: Some(true),
-                ..Default::default()
-            }
-        }).build().expect("client builder is expected to succeed");
-
-        client.init().await.expect("client init is expected to succeed");
-
-        client.on_error(|(error, server)| async move {
-            println!("{:?}: Connection error: {:?}", server, error);
-            Ok(())
-        });
-        
-        AppState {
-            jwt_secret: vec![],
-            db_interface: DbInterface::new().await.expect("failed to create the db connection"),
-            redis_client: client,
+pub async fn get_app_state() -> AppState {
+    if !path::Path::new("/var/lib/hermes_objs").exists() {
+        panic!("couldnt find /var/lib/hermes_objs directory which is expected to exist");
+    }
+    let conf = Config::from_url("redis://localhost:6379/1").expect("redis binding is expected to succeed");
+    let client = Builder::from_config(conf)
+    .with_connection_config(|config| {
+        config.connection_timeout = Duration::from_secs(1);
+        config.tcp = TcpConfig {
+            nodelay: Some(true),
+            ..Default::default()
         }
-    }).await;
+    }).build().expect("client builder is expected to succeed");
+
+    client.init().await.expect("client init is expected to succeed");
+
+    client.on_error(|(error, server)| async move {
+        println!("{:?}: Connection error: {:?}", server, error);
+        Ok(())
+    });
+    
+    return AppState {
+        jwt_secret: vec![],
+        db_interface: DbInterface::new().await.expect("failed to create the db connection"),
+        redis_client: client,
+    };
 }
 
 #[tokio::main]
@@ -52,7 +51,7 @@ async fn main() {
     dotenvy::dotenv().expect("a .env file is expected");
     let state = get_app_state().await.clone();
 
-    let auth = Router::new()
+    let auth: Router<AppState> = Router::new()
     .route("/login", post(login))
     .route("/refresh", post(refresh));
     

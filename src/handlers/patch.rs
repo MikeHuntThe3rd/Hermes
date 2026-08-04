@@ -1,11 +1,9 @@
+use axum::extract::State;
 use axum::{Json, http::StatusCode};
 
-use crate::types::*;
-use crate::get_app_state;
+use crate::{auth::extractor::AuthUser, types::*};
 
-pub async fn update_user(Json(data): Json<User>) ->(StatusCode, Json<Response<User>>) {
-    let inf = get_app_state().await;
-
+pub async fn update_user(_auth: AuthUser, inf: State<AppState>, Json(data): Json<User>) ->(StatusCode, Json<Response<User>>) {
     return match inf.db_interface.update(data).await {
         Ok(usr) => (StatusCode::OK
             , Json(Response{success: true, msg: String::new(), data: Some(usr)})),
@@ -14,9 +12,7 @@ pub async fn update_user(Json(data): Json<User>) ->(StatusCode, Json<Response<Us
     }
 }
 
-pub async fn update_group(Json(data): Json<Group>) ->(StatusCode, Json<Response<Group>>) {
-    let inf = get_app_state().await;
-
+pub async fn update_group(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Group>) ->(StatusCode, Json<Response<Group>>) {
     return match inf.db_interface.update(data).await {
         Ok(grp) => (StatusCode::OK
             , Json(Response{success: true, msg: String::new(), data: Some(grp)})),
@@ -25,9 +21,7 @@ pub async fn update_group(Json(data): Json<Group>) ->(StatusCode, Json<Response<
     }
 }
 
-pub async fn update_message(Json(data): Json<Message>) ->(StatusCode, Json<Response<Message>>) {
-    let inf = get_app_state().await;
-
+pub async fn update_message(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Message>) ->(StatusCode, Json<Response<Message>>) {
     return match inf.db_interface.update(data).await {
         Ok(msg) => (StatusCode::OK
             , Json(Response{success: true, msg: String::new(), data: Some(msg)})),

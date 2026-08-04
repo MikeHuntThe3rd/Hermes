@@ -1,9 +1,8 @@
-use sqlx::{Encode, FromRow, Pool, Postgres, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::QueryAs};
+use sqlx::{Encode, FromRow, Pool, Postgres, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}};
 use crate::types::*;
 
 #[derive(Clone)]
 pub struct DbInterface {
-    options: PgConnectOptions,
     pool: Pool<Postgres>,
 }
 
@@ -18,7 +17,7 @@ impl DbInterface {
         .max_connections(10)
         .connect_with(opt.clone()).await?;
     
-        return Ok(DbInterface{ options: opt, pool: conn_pool});
+        return Ok(DbInterface{ pool: conn_pool});
     }
 
     pub async fn insert<T>(&self, data: T) -> Result<T, sqlx::Error>
@@ -113,6 +112,20 @@ impl DbInterface {
             }
         }
 
+        let res = query.fetch_all(&self.pool).await?;
+        Ok(res)
+    }
+
+
+    pub async fn generic_exec(&self, query: Query<'_, Postgres, PgArguments>) -> Result<(), sqlx::Error>
+    {
+        query.execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn generic_fetch<T>(&self, query: QueryAs<'_, Postgres, T, PgArguments>) -> Result<Vec<T>, sqlx::Error>
+    where T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
+    {
         let res = query.fetch_all(&self.pool).await?;
         Ok(res)
     }

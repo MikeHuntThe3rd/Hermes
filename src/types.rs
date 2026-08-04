@@ -12,12 +12,6 @@ pub enum BindVal {
     ALL,
 }
 
-#[derive(Serialize, Deserialize, PartialEq)]
-pub enum TokenType {
-    Access,
-    Refresh,
-}
-
 pub trait Bindable {
     fn table_name() -> &'static str;
 
@@ -31,6 +25,12 @@ pub trait Bindable {
         bind_val: BindVal)
         -> QueryAs<'lftm, Postgres, Self, PgArguments>
         where Self: Sized;
+}
+
+#[derive(Serialize, Deserialize, PartialEq)]
+pub enum TokenType {
+    Access,
+    Refresh,
 }
 
 #[derive(Serialize)]
@@ -47,6 +47,7 @@ pub struct User {
     pub id: Option<Uuid>,
     pub username: String,
     pub password: String,
+    pub pfp: Uuid,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
@@ -55,6 +56,7 @@ pub struct Group {
     pub id: Option<Uuid>,
     pub name: String,
     pub is_dm: bool,
+    pub gp: Uuid,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
@@ -68,11 +70,29 @@ pub struct Message {
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "id"]
+pub struct Object {
+  pub id: Uuid,
+  pub hash : String,
+  pub path: String,
+  pub size_bytes: i64,
+  pub creation_timestamp: i64,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "group_id;member_id"]
 #[include_ids(true)]
 pub struct Group_Member {
     pub group_id: Uuid,
     pub member_id: Uuid,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "message_id;object_id"]
+#[include_ids(true)]
+pub struct Message_Object {
+    pub message_id: i32,
+    pub object_id: Uuid,
 }
 
 #[derive(Clone)]
