@@ -58,17 +58,21 @@ async fn main() {
     
     let api = Router::new()
     .nest("/auth", auth)
+    /* ===== POST ===== */
     .route("/add_group", post(add_group))
     .route("/add_group_member", post(add_group_member))
     .route("/add_message", post(add_message))
-    .route("/get_user", get(get_user))
-    .route("/get_group/{group_id}", get(get_group))
-    .route("/get_group_member/{group_id, member_id}", get(get_group_member))
-    .route("/get_message/{message_id}", get(get_message))
-    .route("/delete_user/{user_id}", delete(delete_user))
+    /* ===== GET ===== */
+    .route("/get_friends", get(get_friends))
+    .route("/get_groups", get(get_groups))
+    .route("/get_group_members/{group_id}", get(get_group_members))
+    .route("/get_messages/{group_id}", get(get_messages))
+    /* ===== DELETE ===== */
+    .route("/delete_self", delete(delete_self))
     .route("/delete_group/{group_id}", delete(delete_group))
     .route("/delete_group_member/{group_member_id}", delete(delete_group_member))
     .route("/delete_message/{message_id}", delete(delete_message))
+    /* ===== PATCH ===== */
     .route("/update_user", patch(update_user))
     .route("/update_group", patch(update_group))
     .route("/update_message", patch(update_message))

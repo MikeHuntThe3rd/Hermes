@@ -59,7 +59,7 @@ impl DbInterface {
         Ok(res)
     }
 
-    pub async fn delete<I, T>(&self, id_s: &[I]) -> Result<T, sqlx::Error>
+    pub async fn delete<I, T>(&self, id_s: &[I]) -> Result<Vec<T>, sqlx::Error>
     where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>
     , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
@@ -76,7 +76,7 @@ impl DbInterface {
         for val in id_s {
             query = query.bind(val);
         }
-        let res = query.fetch_one(&self.pool).await?;
+        let res = query.fetch_all(&self.pool).await?;
         Ok(res)
     }
 

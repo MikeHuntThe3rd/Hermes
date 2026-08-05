@@ -8,7 +8,7 @@ use crate::types::*;
 use crate::{auth::{creation::create_jwt}, errors::error_t::*};
 
 #[derive(Serialize, Deserialize)]
-struct UserTokenObj {
+pub struct UserTokenObj {
     pub user_data: User,
     pub token_data: TokenPair,
 }

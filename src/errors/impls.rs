@@ -51,6 +51,7 @@ impl IntoResponse for InternalError {
             InternalError::DbError => (StatusCode::INTERNAL_SERVER_ERROR, "given data resulted in a faulty db request"),
             InternalError::RedisError => (StatusCode::INTERNAL_SERVER_ERROR, "redis service is down. try again"),
             InternalError::DecodeEncodeErr => (StatusCode::INTERNAL_SERVER_ERROR, "an error occured while encoding/decoding data"),
+            InternalError::NoMatches => (StatusCode::NOT_FOUND, "no row matched the given data"),
         };
 
         let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 

@@ -1,9 +1,21 @@
+
+CREATE TYPE relation_t AS ENUM ('Friends', 'Pending', 'Blocked');
+
 CREATE TABLE "users" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "username" text NOT NULL UNIQUE,
   "password" text NOT NULL,
   "pfp" uuid
 );
+
+CREATE TABLE "relations" (
+  "relating_user" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "related_user" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "state" relation_t NOT NULL,
+  PRIMARY KEY (relating_user, related_user),
+  CONSTRAINT friend_equaltiy CHECK (relating_user != related_user)
+);
+
 
 CREATE TABLE "groups" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),

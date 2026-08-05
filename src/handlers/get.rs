@@ -1,45 +1,111 @@
 use axum::extract::{Path, State};
-use axum::{Json, http::StatusCode};
+use axum::http::StatusCode;
+use sqlx::Postgres;
+use sqlx::postgres::PgArguments;
+use sqlx::query::QueryAs;
 use uuid::Uuid;
 
-use crate::auth::extractor::AuthUser;
+use crate::{auth::extractor::AuthUser, errors::error_t::InternalError};
 use crate::types::*;
 
-pub async fn get_user(auth: AuthUser, State(inf): State<AppState>) -> (StatusCode, Json<Response<Vec<User>>>) {
-    return match inf.db_interface.select::<Uuid, User>(Some((&User::id_columns(), &vec![auth.user_id]))).await {
-        Ok(usr) => (StatusCode::OK
-            , Json(Response{success: true, msg: String::new(), data: Some(usr)})),
-        Err(e) => (StatusCode::NOT_FOUND
-            , Json(Response{success: false, msg: e.to_string(), data: None})),
+
+pub async fn get_friends(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<User>>, InternalError> {
+    let sql: &'static str = "SELECT * FROM users 
+    JOIN relations ON relations.related_user = users.id 
+    WHERE relations.relating_user = {$1} AND relations.state = {$2};";
+
+    let query: QueryAs<'_, Postgres, User, PgArguments> = sqlx::query_as(&sql)
+    .bind(auth.user_id)
+    .bind(RelationT::Friends);
+
+    let users = inf.db_interface.generic_fetch(query).await.map_err(|_| InternalError::DbError)?;
+
+    if users.len() < 1 {
+        return Err(InternalError::NoMatches);
     }
+
+    return Ok(
+        Res { 
+            status: StatusCode::FOUND, 
+            success: true, 
+            msg: String::new(), 
+            data: Some(users) 
+        }
+    );
+
 }
 
-pub async fn get_group(_auth: AuthUser, State(inf): State<AppState>, Path(group_id) : Path<Uuid>) -> (StatusCode, Json<Response<Vec<Group>>>) {
-    return match inf.db_interface.select::<Uuid, Group>(Some((&Group::id_columns(), &vec![group_id]))).await {
-        Ok(grp) => (StatusCode::OK
-            , Json(Response{success: true, msg: String::new(), data: Some(grp)})),
-        Err(e) => (StatusCode::NOT_FOUND
-            , Json(Response{success: false, msg: e.to_string(), data: None})),
+pub async fn get_groups(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<Group>>, InternalError> {
+    let sql: &'static str = "SELECT * FROM groups 
+    JOIN group_members ON group_members.group_id = groups.id 
+    WHERE group_members.member_id = {$1};";
+
+    let query: QueryAs<'_, Postgres, Group, PgArguments> = sqlx::query_as(&sql)
+    .bind(auth.user_id);
+
+    let groups = inf.db_interface.generic_fetch(query)
+    .await.map_err(|_| InternalError::DbError)?;
+
+    if groups.len() < 1 {
+        return Err(InternalError::NoMatches);
     }
+
+    return Ok(
+        Res { 
+            status: StatusCode::FOUND, 
+            success: true, 
+            msg: String::new(), 
+            data: Some(groups) 
+        }
+    );
 }
 
-pub async fn get_group_member(_auth: AuthUser, State(inf): State<AppState>, Path(group_id) : Path<Uuid>, Path(member_id) : Path<Uuid>) -> (StatusCode, Json<Response<Vec<Group_Member>>>) {
-    println!("{}", group_id);
-    println!("{}", member_id);
+pub async fn get_group_members(_auth: AuthUser, State(inf): State<AppState>, Path(group_id) : Path<Uuid>) -> Result<Res<Vec<User>>, InternalError> {
+    let sql: &'static str = "SELECT * FROM users 
+    JOIN group_members ON group_members.member_id = users.id 
+    WHERE group_members.group_id = {$1};";
 
-    return match inf.db_interface.select::<Uuid, Group_Member>(Some((&Group_Member::id_columns(), &vec![group_id, member_id]))).await {
-        Ok(grp_mem) => (StatusCode::OK
-            , Json(Response{success: true, msg: String::new(), data: Some(grp_mem)})),
-        Err(e) => (StatusCode::NOT_FOUND
-            , Json(Response{success: false, msg: e.to_string(), data: None})),
+    let query: QueryAs<'_, Postgres, User, PgArguments> = sqlx::query_as(&sql)
+    .bind(group_id);
+
+    let users = inf.db_interface.generic_fetch(query)
+    .await.map_err(|_| InternalError::DbError)?;
+
+    if users.len() < 1 {
+        return Err(InternalError::NoMatches);
     }
+
+    return Ok(
+        Res { 
+            status: StatusCode::FOUND, 
+            success: true, 
+            msg: String::new(), 
+            data: Some(users) 
+        }
+    );
 }
 
-pub async fn get_message(_auth: AuthUser, State(inf): State<AppState>, Path(message_id) : Path<i32>) -> (StatusCode, Json<Response<Vec<Message>>>) {
-    return match inf.db_interface.select::<i32, Message>(Some((&Message::id_columns(), &vec![message_id]))).await {
-        Ok(message) => (StatusCode::OK
-            , Json(Response{success: true, msg: String::new(), data: Some(message)})),
-        Err(e) => (StatusCode::NOT_FOUND
-            , Json(Response{success: false, msg: e.to_string(), data: None})),
+pub async fn get_messages(_auth: AuthUser, State(inf): State<AppState>, Path(group_id) : Path<Uuid>) -> Result<Res<Vec<Message>>, InternalError> {
+    let sql: &'static str = "SELECT * FROM messages 
+    JOIN groups ON groups.id = messages.group_id 
+    WHERE groups.id = {$1};";
+
+    let query: QueryAs<'_, Postgres, Message, PgArguments> = sqlx::query_as(&sql)
+    .bind(group_id);
+
+    let messages = inf.db_interface.generic_fetch(query)
+    .await.map_err(|_| InternalError::DbError)?;
+
+    if messages.len() < 1 {
+        return Err(InternalError::NoMatches);
     }
+
+    return Ok(
+        Res { 
+            status: StatusCode::FOUND, 
+            success: true, 
+            msg: String::new(), 
+            data: Some(messages) 
+        }
+    );
 }

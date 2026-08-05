@@ -12,6 +12,7 @@ pub enum InternalError {
     DbError,
     RedisError,
     DecodeEncodeErr,
+    NoMatches,
 }
 
 pub enum GenericErr {

@@ -6,12 +6,7 @@ use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
 use crate::db::*;
 use uuid::Uuid;
 
-#[derive(PartialEq)]
-pub enum BindVal {
-    ID,
-    BASE,
-    ALL,
-}
+/* ===== TRAITS ===== */
 
 pub trait Bindable {
     fn table_name() -> &'static str;
@@ -28,11 +23,30 @@ pub trait Bindable {
         where Self: Sized;
 }
 
+/* ===== ENUMS ===== */
+
+#[derive(PartialEq)]
+pub enum BindVal {
+    ID,
+    BASE,
+    ALL,
+}
+
 #[derive(Serialize, Deserialize, PartialEq)]
 pub enum TokenType {
     Access,
     Refresh,
 }
+
+#[derive(Debug, sqlx::Type, Serialize, Deserialize)]
+#[sqlx(type_name = "relation_t")]
+pub enum RelationT {
+    Friends, 
+    Pending, 
+    Blocked
+}
+
+/* ===== STRUCTS ===== */
 
 pub struct Res<T>
 where T: Serialize
@@ -97,6 +111,11 @@ pub struct Message_Object {
     pub object_id: Uuid,
 }
 
+pub struct Relation {
+    relating_user: Uuid,
+    related_user: Uuid,
+    state: RelationT,
+}
 #[derive(Clone)]
 pub struct AppState {
     pub jwt_secret: Vec<u8>,
