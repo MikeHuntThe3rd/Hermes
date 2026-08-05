@@ -1,3 +1,4 @@
+use axum::http::StatusCode;
 use derive_macros::Bindable;
 use fred::clients::Client;
 use serde::{Serialize, Deserialize};
@@ -33,15 +34,16 @@ pub enum TokenType {
     Refresh,
 }
 
-#[derive(Serialize)]
-pub struct Response<T>
+pub struct Res<T>
+where T: Serialize
 {
+    pub status: StatusCode,
     pub success: bool,
     pub msg: String,
     pub data: Option<T>,
 }
 
-#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable, Clone)]
 #[ids = "id"]
 pub struct User {
     pub id: Option<Uuid>,

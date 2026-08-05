@@ -1,8 +1,8 @@
 mod handlers;
 mod auth;
 mod types;
+mod errors;
 mod db;
-mod res_impls;
 
 use std::{path, time::Duration};
 
@@ -53,11 +53,11 @@ async fn main() {
 
     let auth: Router<AppState> = Router::new()
     .route("/login", post(login))
-    .route("/refresh", post(refresh));
+    .route("/refresh", post(refresh))
+    .route("/sign_up", post(sign_up));
     
     let api = Router::new()
     .nest("/auth", auth)
-    .route("/add_user", post(add_user))
     .route("/add_group", post(add_group))
     .route("/add_group_member", post(add_group_member))
     .route("/add_message", post(add_message))

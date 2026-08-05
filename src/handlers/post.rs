@@ -2,15 +2,6 @@ use axum::{Json, extract::State, http::StatusCode};
 
 use crate::{auth::extractor::AuthUser, types::*};
 
-pub async fn add_user(_auth: AuthUser, inf: State<AppState>, Json(data): Json<User>) -> (StatusCode, Json<Response<User>>) {
-    return match inf.db_interface.insert::<User>(data).await {
-        Ok(usr) => (StatusCode::CREATED
-            , Json(Response{success: true, msg: String::new(), data: Some(usr)})),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR
-            , Json(Response {success: false, msg: e.to_string(), data: None})),
-    }
-}
-
 pub async fn add_group(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Group>) -> (StatusCode, Json<Response<Group>>) {
     return match inf.db_interface.insert::<Group>(data).await {
         Ok(grp) => (StatusCode::CREATED

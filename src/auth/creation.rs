@@ -6,7 +6,7 @@ use crate::types::{Claims, TokenType};
 pub async fn create_jwt(
     user_id: Uuid,
     tkn_type: TokenType,
-    secret: &[u8]) -> Result<String, jsonwebtoken::errors::Error> 
+    secret: &[u8]) -> Result<String, jsonwebtoken::errors::Error>
 {
     let current_t = OffsetDateTime::now_utc();
     let expr_t = match tkn_type {
