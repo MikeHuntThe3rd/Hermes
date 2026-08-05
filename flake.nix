@@ -16,6 +16,8 @@
         };
 
         rustToolchain = pkgs.rust-bin.stable.latest.default;
+
+        sql = ./hermes.sql;
       in
       {
         devShells.default = pkgs.mkShell {
@@ -33,6 +35,13 @@
           ];
 
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+
+          shellHook = ''
+            echo "nuking db"
+            sudo -u postgres psql -d records_ps -c "DROP SCHEMA public CASCADE;CREATE SCHEMA public;"
+            echo "recreating db"
+            sudo -u postgres psql -d records_ps -f ${sql}
+          '';
         };
       });
 }
