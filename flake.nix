@@ -37,10 +37,11 @@
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
 
           shellHook = ''
-            echo "nuking db"
+            echo "===== nuking db ====="
             sudo -u postgres psql -d records_ps -c "DROP SCHEMA public CASCADE;CREATE SCHEMA public;"
-            echo "recreating db"
+            echo "===== recreating db ====="
             sudo -u postgres psql -d records_ps -f ${sql}
+            echo "===== db recreated ====="
           '';
         };
       });
