@@ -63,7 +63,7 @@ pub struct User {
     pub id: Option<Uuid>,
     pub username: String,
     pub password: String,
-    pub pfp: Uuid,
+    pub pfp: Option<Uuid>,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
@@ -72,7 +72,7 @@ pub struct Group {
     pub id: Option<Uuid>,
     pub name: String,
     pub is_dm: bool,
-    pub gp: Uuid,
+    pub gp: Option<Uuid>,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
