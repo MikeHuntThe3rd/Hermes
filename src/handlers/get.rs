@@ -12,7 +12,7 @@ use crate::types::*;
 pub async fn get_friends(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<User>>, InternalError> {
     let sql: &'static str = "SELECT * FROM users 
     JOIN relations ON relations.related_user = users.id 
-    WHERE relations.relating_user = {$1} AND relations.state = {$2};";
+    WHERE relations.relating_user = $1 AND relations.state = $2;";
 
     let query: QueryAs<'_, Postgres, User, PgArguments> = sqlx::query_as(&sql)
     .bind(auth.user_id)
@@ -38,7 +38,7 @@ pub async fn get_friends(auth: AuthUser, State(inf): State<AppState>) -> Result<
 pub async fn get_groups(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<Group>>, InternalError> {
     let sql: &'static str = "SELECT * FROM groups 
     JOIN group_members ON group_members.group_id = groups.id 
-    WHERE group_members.member_id = {$1};";
+    WHERE group_members.member_id = $1;";
 
     let query: QueryAs<'_, Postgres, Group, PgArguments> = sqlx::query_as(&sql)
     .bind(auth.user_id);
@@ -63,7 +63,7 @@ pub async fn get_groups(auth: AuthUser, State(inf): State<AppState>) -> Result<R
 pub async fn get_group_members(_auth: AuthUser, State(inf): State<AppState>, Path(group_id) : Path<Uuid>) -> Result<Res<Vec<User>>, InternalError> {
     let sql: &'static str = "SELECT * FROM users 
     JOIN group_members ON group_members.member_id = users.id 
-    WHERE group_members.group_id = {$1};";
+    WHERE group_members.group_id = $1;";
 
     let query: QueryAs<'_, Postgres, User, PgArguments> = sqlx::query_as(&sql)
     .bind(group_id);
@@ -88,7 +88,7 @@ pub async fn get_group_members(_auth: AuthUser, State(inf): State<AppState>, Pat
 pub async fn get_messages(_auth: AuthUser, State(inf): State<AppState>, Path(group_id) : Path<Uuid>) -> Result<Res<Vec<Message>>, InternalError> {
     let sql: &'static str = "SELECT * FROM messages 
     JOIN groups ON groups.id = messages.group_id 
-    WHERE groups.id = {$1};";
+    WHERE groups.id = $1;";
 
     let query: QueryAs<'_, Postgres, Message, PgArguments> = sqlx::query_as(&sql)
     .bind(group_id);
