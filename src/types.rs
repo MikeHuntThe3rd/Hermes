@@ -92,11 +92,16 @@ pub struct Message {
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "id"]
 pub struct Object {
-  pub id: Uuid,
+  pub id: Option<Uuid>,
   pub hash : String,
   pub path: String,
   pub size_bytes: i64,
   pub creation_timestamp: i64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ObjectIds {
+    pub ids: Vec<Uuid>,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]

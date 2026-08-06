@@ -1,5 +1,7 @@
 use axum::{Json, extract::{Multipart, State}, http::StatusCode};
 use tokio::io::AsyncWriteExt;
+use sha2::{Digest, Sha256};
+use time::OffsetDateTime;
 
 use crate::{auth::extractor::AuthUser, types::*, errors::error_t::InternalError};
 
@@ -24,7 +26,7 @@ pub async fn add_message(_auth: AuthUser, inf: State<AppState>, Json(data): Json
     }
 }
 
-pub async fn upload(mut data: Multipart) -> Result<Res<()>, InternalError> {
+pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<ObjectIds>, InternalError> {
     let match_err = move |status: StatusCode| -> InternalError {
         return match status {
             StatusCode::BAD_REQUEST => InternalError::BadRequest,
@@ -33,23 +35,77 @@ pub async fn upload(mut data: Multipart) -> Result<Res<()>, InternalError> {
         };
     };
 
+    let mut objs = ObjectIds {ids: vec![]};
+
     while let Some(mut field) = data
     .next_field().await.map_err(|e| match_err(e.status()))? 
     {
-        let temp_path = TEMP_PTH_STR.to_string() + &uuid::Uuid::new_v4().to_string();
-        let mut temp_file = tokio::fs::File::create_new(temp_path)
+        let uuid_name = uuid::Uuid::new_v4().to_string();
+        let temp_path = TEMP_PTH_STR.to_string() + &uuid_name;
+        let mut temp_file = tokio::fs::File::create_new(&temp_path)
         .await.map_err(|_| InternalError::OperationsError)?;
+
+        let mut hasher = Sha256::new();
 
         while let Some(chunk) = field
         .chunk().await.map_err(|e| match_err(e.status()))? 
         {
+            hasher.update(&chunk);
             temp_file.write_all(&chunk)
-            .await.map_err(|_| InternalError::OperationsError)?;    
+            .await.map_err(|_| InternalError::OperationsError)?;
         }
 
         temp_file.flush().await.map_err(|_| InternalError::OperationsError)?;
         temp_file.sync_all().await.map_err(|_| InternalError::OperationsError)?;
+
+        let hash = hex::encode(hasher.finalize());
+
+        let matches: Vec<Object> = inf.db_interface
+        .select::<&str, Object>(Some((&["hash"], &[&hash])))
+        .await.map_err(|_| InternalError::DbError)?;
+
+        
+        let mut size:i64 = 0;
+        let new_obj_path = if let Some(frst) = matches.first() 
+        {
+            frst.path.clone()
+        }
+        else {
+            size = temp_file.metadata()
+            .await.map_err(|_| InternalError::OperationsError)?.len() as i64;
+
+            let res = OBJ_PTH_STR.to_string() + &hash + &uuid_name;
+            tokio::fs::rename(&temp_path, &res)
+            .await.map_err(|_| {
+                tokio::spawn(tokio::fs::remove_file(temp_path));
+                InternalError::OperationsError
+            })?;
+
+            res
+        };
+
+        let new_obj = Object {
+            id: None,
+            hash: hash,
+            path: new_obj_path.clone(),
+            size_bytes: size,
+            creation_timestamp: OffsetDateTime::now_utc().unix_timestamp() as i64
+        };
+
+        
+
+        let obj = inf.db_interface.insert::<Object>(new_obj)
+        .await.map_err(|_| {
+            if matches.first().is_none() {
+                tokio::spawn(tokio::fs::remove_file(new_obj_path));  
+            }
+            InternalError::DbError
+        })?;
+        
+        if let Some(tmp_id) = obj.id {
+            objs.ids.push(tmp_id);
+        }
     }
 
-    return Err(InternalError::OperationsError);
+    return Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(objs) });
 }
