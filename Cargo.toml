@@ -10,7 +10,7 @@ tower-http = { version = "0.7", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "uuid"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-axum = { version = "0.8.9", features = ["macros"] }
+axum = { version = "0.8.9", features = ["macros", "multipart"] }
 axum-extra = { version = "0.12.6", features = ["typed-header"] }
 jsonwebtoken = { version = "10", default-features = false, features = ["aws_lc_rs"] }
 fred = "10.1.0"

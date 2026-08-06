@@ -5,6 +5,10 @@ use serde::{Serialize, Deserialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
 use crate::db::*;
 use uuid::Uuid;
+/* ===== CONSTS ===== */
+
+pub const TEMP_PTH_STR: &'static str = "/var/lib/hermes_objs/temp/";
+pub const OBJ_PTH_STR: &'static str = "/var/lib/hermes_objs/objs/";
 
 /* ===== TRAITS ===== */
 

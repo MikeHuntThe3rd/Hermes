@@ -51,7 +51,10 @@ impl IntoResponse for InternalError {
             InternalError::DbError => (StatusCode::INTERNAL_SERVER_ERROR, "given data resulted in a faulty db request"),
             InternalError::RedisError => (StatusCode::INTERNAL_SERVER_ERROR, "redis service is down. try again"),
             InternalError::DecodeEncodeErr => (StatusCode::INTERNAL_SERVER_ERROR, "an error occured while encoding/decoding data"),
+            InternalError::OperationsError => (StatusCode::INTERNAL_SERVER_ERROR, "internal operations in the server failed"),
             InternalError::NoMatches => (StatusCode::NOT_FOUND, "no row matched the given data"),
+            InternalError::BadRequest => (StatusCode::BAD_REQUEST, "the request body was incorrectly formatted"),
+            InternalError::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "the request body exceeded the maximum size allowed"),
         };
 
         let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 

@@ -6,12 +6,12 @@ mod db;
 
 use std::{path, time::Duration};
 
-use axum::{Router, routing::{delete, get, patch, post}};
+use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit};
 use tower_http::services::{ServeDir};
 use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
 
 use db::DbInterface;
-use types::AppState;
+use types::{AppState, TEMP_PTH_STR, OBJ_PTH_STR};
 use auth::endpoints::*;
 use handlers::{post::*
     ,delete::*
@@ -19,8 +19,10 @@ use handlers::{post::*
     ,patch::*};
 
 pub async fn get_app_state() -> AppState {
-    if !path::Path::new("/var/lib/hermes_objs").exists() {
-        panic!("couldnt find /var/lib/hermes_objs directory which is expected to exist");
+    if !path::Path::new(TEMP_PTH_STR).exists() ||
+    !path::Path::new(OBJ_PTH_STR).exists()
+    {
+        panic!("couldnt find resolve file paths");
     }
     let conf = Config::from_url("redis://localhost:6379/1").expect("redis binding is expected to succeed");
     let client = Builder::from_config(conf)
@@ -76,6 +78,9 @@ async fn main() {
     .route("/update_user", patch(update_user))
     .route("/update_group", patch(update_group))
     .route("/update_message", patch(update_message))
+    /* ===== OBJECTS ===== */
+    .route("/upload", post(upload)).layer(DefaultBodyLimit::max(10000000))
+    .route("/pull/{object_id}", get(get_friends)).layer(DefaultBodyLimit::max(10000000))
     .with_state(state);
 
     let interface: Router<()> = Router::new()
