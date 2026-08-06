@@ -74,7 +74,7 @@ pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<Obj
             size = temp_file.metadata()
             .await.map_err(|_| InternalError::OperationsError)?.len() as i64;
 
-            let res = OBJ_PTH_STR.to_string() + &hash + &uuid_name;
+            let res = OBJ_PTH_STR.to_string() + &hash + "/" + &uuid_name;
             tokio::fs::rename(&temp_path, &res)
             .await.map_err(|_| {
                 tokio::spawn(tokio::fs::remove_file(temp_path));
