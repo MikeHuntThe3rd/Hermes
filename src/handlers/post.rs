@@ -73,6 +73,7 @@ pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<Obj
             ty
         }
         else {
+            tokio::spawn(tokio::fs::remove_file(temp_path));
             return Err(InternalError::UnknownType);
         };
         
@@ -86,7 +87,12 @@ pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<Obj
             size = temp_file.metadata()
             .await.map_err(|_| InternalError::OperationsError)?.len() as i64;
 
+            let dir_path = OBJ_PTH_STR.to_string() + &hash;
             let full_path = OBJ_PTH_STR.to_string() + &hash + "/" + &uuid_name;
+
+            tokio::fs::create_dir_all(&dir_path)
+            .await.map_err(|_| InternalError::OperationsError)?;
+
             tokio::fs::rename(&temp_path, full_path)
             .await.map_err(|_| {
                 tokio::spawn(tokio::fs::remove_file(temp_path));
