@@ -80,7 +80,7 @@ async fn main() {
     .route("/update_message", patch(update_message))
     /* ===== OBJECTS ===== */
     .route("/upload", post(upload)).layer(DefaultBodyLimit::max(10000000))
-    .route("/pull/{object_id}", get(get_friends)).layer(DefaultBodyLimit::max(10000000))
+    .route("/pull/{object_id}", get(pull)).layer(DefaultBodyLimit::max(10000000))
     .with_state(state);
 
     let interface: Router<()> = Router::new()

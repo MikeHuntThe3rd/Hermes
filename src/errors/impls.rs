@@ -55,6 +55,7 @@ impl IntoResponse for InternalError {
             InternalError::NoMatches => (StatusCode::NOT_FOUND, "no row matched the given data"),
             InternalError::BadRequest => (StatusCode::BAD_REQUEST, "the request body was incorrectly formatted"),
             InternalError::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "the request body exceeded the maximum size allowed"),
+            InternalError::UnknownType => (StatusCode::NOT_FOUND, "type of the file could not be infered"),
         };
 
         let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 

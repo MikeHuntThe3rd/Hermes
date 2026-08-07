@@ -16,6 +16,7 @@ pub enum InternalError {
     NoMatches,
     BadRequest,
     BodyTooLarge,
+    UnknownType,
 }
 
 pub enum GenericErr {

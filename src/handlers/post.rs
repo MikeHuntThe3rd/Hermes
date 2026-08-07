@@ -47,6 +47,7 @@ pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<Obj
 
         let mut hasher = Sha256::new();
 
+        /* ===== LOAD TEMP FILE ===== */
         while let Some(chunk) = field
         .chunk().await.map_err(|e| match_err(e.status()))? 
         {
@@ -64,30 +65,42 @@ pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<Obj
         .select::<&str, Object>(Some((&["hash"], &[&hash])))
         .await.map_err(|_| InternalError::DbError)?;
 
+        /* ===== ERASE TEMP FILE ===== */
+        let mime = if let Some(ty) = infer::get(
+            &tokio::fs::read(&temp_path)
+            .await.map_err(|_| InternalError::OperationsError)?)
+        {
+            ty
+        }
+        else {
+            return Err(InternalError::UnknownType);
+        };
         
         let mut size:i64 = 0;
         let new_obj_path = if let Some(frst) = matches.first() 
         {
-            frst.path.clone()
+            tokio::fs::remove_file(temp_path).await.map_err(|_| InternalError::OperationsError)?;
+            frst.rel_path.clone()
         }
         else {
             size = temp_file.metadata()
             .await.map_err(|_| InternalError::OperationsError)?.len() as i64;
 
-            let res = OBJ_PTH_STR.to_string() + &hash + "/" + &uuid_name;
-            tokio::fs::rename(&temp_path, &res)
+            let full_path = OBJ_PTH_STR.to_string() + &hash + "/" + &uuid_name;
+            tokio::fs::rename(&temp_path, full_path)
             .await.map_err(|_| {
                 tokio::spawn(tokio::fs::remove_file(temp_path));
                 InternalError::OperationsError
             })?;
 
-            res
+            hash.clone() + "/" + &uuid_name
         };
 
         let new_obj = Object {
             id: None,
             hash: hash,
-            path: new_obj_path.clone(),
+            rel_path: new_obj_path.clone(),
+            mime_type: mime.to_string(),
             size_bytes: size,
             creation_timestamp: OffsetDateTime::now_utc().unix_timestamp() as i64
         };
@@ -97,7 +110,7 @@ pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<Obj
         let obj = inf.db_interface.insert::<Object>(new_obj)
         .await.map_err(|_| {
             if matches.first().is_none() {
-                tokio::spawn(tokio::fs::remove_file(new_obj_path));  
+                tokio::spawn(tokio::fs::remove_file(OBJ_PTH_STR.to_string() + &new_obj_path));  
             }
             InternalError::DbError
         })?;

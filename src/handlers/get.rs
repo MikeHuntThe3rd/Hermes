@@ -1,5 +1,7 @@
+use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{Response, StatusCode};
+use axum::response::IntoResponse;
 use sqlx::Postgres;
 use sqlx::postgres::PgArguments;
 use sqlx::query::QueryAs;
@@ -108,4 +110,21 @@ pub async fn get_messages(_auth: AuthUser, State(inf): State<AppState>, Path(gro
             data: Some(messages) 
         }
     );
+}
+
+pub async fn pull(State(inf): State<AppState>, Path(object_id): Path<Uuid>) -> Result<impl IntoResponse, InternalError> {
+    let obj: Object = 
+    inf.db_interface
+    .select::<Uuid, Object>(Some((Object::id_columns(), &[object_id])))
+    .await.map_err(|_| InternalError::DbError)?
+    .into_iter().next()
+    .ok_or(InternalError::OperationsError)?;
+
+    Ok(
+        Response::builder()
+        .header("X-Accel-Redirect", format!("/files/obj/{}", obj.rel_path))
+        .header("Content-Type", obj.mime_type)
+        .body(Body::empty())
+        .map_err(|_| InternalError::OperationsError)?
+    )
 }

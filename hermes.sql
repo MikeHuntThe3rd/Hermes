@@ -40,7 +40,8 @@ CREATE TABLE "messages" (
 CREATE TABLE "objects" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "hash" char(64) NOT NULL UNIQUE,
-  "path" text NOT NULL UNIQUE,
+  "rel_path" text NOT NULL UNIQUE,
+  "mime_type" text NOT NULL,
   "size_bytes" bigint NOT NULL,
   "creation_timestamp" bigint NOT NULL
 );
