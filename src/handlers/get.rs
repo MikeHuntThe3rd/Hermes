@@ -122,7 +122,7 @@ pub async fn pull(State(inf): State<AppState>, Path(object_id): Path<Uuid>) -> R
 
     Ok(
         Response::builder()
-        .header("X-Accel-Redirect", format!("/files/obj/{}", obj.rel_path))
+        .header("X-Accel-Redirect", format!("/files/objs/{}", obj.rel_path))
         .header("Content-Type", obj.mime_type)
         .body(Body::empty())
         .map_err(|_| InternalError::OperationsError)?
