@@ -2,6 +2,7 @@ mod handlers;
 mod auth;
 mod types;
 mod errors;
+mod cleaner;
 mod db;
 
 use std::{path, time::Duration};
@@ -51,7 +52,8 @@ pub async fn get_app_state() -> AppState {
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().expect("a .env file is expected");
-    let state = get_app_state().await.clone();
+    let state = get_app_state().await;
+    tokio::spawn(cleaner::cleaner_subprocess(state.clone()));
 
     let auth: Router<AppState> = Router::new()
     .route("/login", post(login))
