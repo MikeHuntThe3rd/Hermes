@@ -118,7 +118,7 @@ pub async fn pull(State(inf): State<AppState>, Path(object_id): Path<Uuid>) -> R
     .select::<Uuid, Object>(Some((Object::id_columns(), &[object_id])))
     .await.map_err(|_| InternalError::DbError)?
     .into_iter().next()
-    .ok_or(InternalError::OperationsError)?;
+    .ok_or(InternalError::NoMatches)?;
 
     Ok(
         Response::builder()

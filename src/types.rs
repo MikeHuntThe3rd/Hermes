@@ -9,7 +9,6 @@ use uuid::Uuid;
 
 pub const TEMP_PTH_STR: &'static str = "/var/lib/hermes_objs/temp/";
 pub const OBJ_PTH_STR: &'static str = "/var/lib/hermes_objs/objs/";
-pub const OBJ_DIR_STR: &'static str = "/var/lib/hermes_objs/";
 
 /* ===== TRAITS ===== */
 
