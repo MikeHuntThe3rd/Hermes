@@ -1,50 +1,54 @@
-use axum::extract::Path;
-use axum::{Json, http::StatusCode};
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use uuid::Uuid;
 
-use crate::types::*;
-use crate::handlers::get_db_interface;
+use crate::errors::error_t::InternalError;
+use crate::{auth::extractor::AuthUser, types::*};
 
-pub async fn delete_user(Path(user_id): Path<Uuid>) -> (StatusCode, Json<Response<User>>) {
-    let inf = get_db_interface().await;
-
-    return match inf.delete::<Uuid, User>(&vec![user_id]).await {
-        Ok(usr) => (StatusCode::OK
-            , Json(Response { success: true, msg: String::new(), data: Some(usr) })),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR
-            , Json(Response { success: false, msg: e.to_string(), data: None })),
+pub async fn delete_self(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<()>, InternalError> {
+    let deletes = inf.db_interface.delete::<Uuid, User>(&vec![auth.user_id])
+    .await.map_err(|_| InternalError::DbError)?;
+    
+    if deletes.len() >= 1 {
+        return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
+    }
+    else {
+        return Err(InternalError::NoMatches);
     }
 }
 
-pub async fn delete_group(Path(group_id): Path<Uuid>) -> (StatusCode, Json<Response<Group>>) {
-    let inf = get_db_interface().await;
-
-    return match inf.delete::<Uuid, Group>(&vec![group_id]).await {
-        Ok(grp) => (StatusCode::OK
-            , Json(Response { success: true, msg: String::new(), data: Some(grp) })),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR
-            , Json(Response { success: false, msg: e.to_string(), data: None })),
+pub async fn delete_group(_auth: AuthUser, State(inf): State<AppState>, Path(group_id): Path<Uuid>) -> Result<Res<()>, InternalError> {
+    let deletes = inf.db_interface.delete::<Uuid, Group>(&vec![group_id])
+    .await.map_err(|_| InternalError::DbError)?;
+    
+    if deletes.len() >= 1 {
+        return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
+    }
+    else {
+        return Err(InternalError::NoMatches);
     }
 }
 
-pub async fn delete_group_member(Path(group_member_id): Path<Uuid>) -> (StatusCode, Json<Response<Group_Member>>) {
-    let inf = get_db_interface().await;
-
-    return match inf.delete::<Uuid, Group_Member>(&vec![group_member_id]).await {
-        Ok(grp_mem) => (StatusCode::OK
-            , Json(Response { success: true, msg: String::new(), data: Some(grp_mem) })),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR
-            , Json(Response { success: false, msg: e.to_string(), data: None })),
+pub async fn delete_group_member(_auth: AuthUser, State(inf): State<AppState>, Path(group_member_id): Path<Uuid>) -> Result<Res<()>, InternalError> {
+    let deletes = inf.db_interface.delete::<Uuid, Group_Member>(&vec![group_member_id])
+    .await.map_err(|_| InternalError::DbError)?;
+    
+    if deletes.len() >= 1 {
+        return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
+    }
+    else {
+        return Err(InternalError::NoMatches);
     }
 }
 
-pub async fn delete_message(Path(message_id): Path<i32>) -> (StatusCode, Json<Response<Message>>) {
-    let inf = get_db_interface().await;
-
-    return match inf.delete::<i32, Message>(&vec![message_id]).await {
-        Ok(message) => (StatusCode::OK
-            , Json(Response { success: true, msg: String::new(), data: Some(message) })),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR
-            , Json(Response { success: false, msg: e.to_string(), data: None })),
+pub async fn delete_message(_auth: AuthUser, State(inf): State<AppState>, Path(message_id): Path<i32>) -> Result<Res<()>, InternalError> {
+    let deletes = inf.db_interface.delete::<i32, Message>(&vec![message_id])
+    .await.map_err(|_| InternalError::DbError)?;
+    
+    if deletes.len() >= 1 {
+        return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
+    }
+    else {
+        return Err(InternalError::NoMatches);
     }
 }
