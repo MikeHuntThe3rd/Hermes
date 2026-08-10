@@ -60,6 +60,11 @@
             echo "===== recreating db ====="
             sudo -u postgres psql -d records_ps -f ${sql}
             echo "===== db recreated ====="
+            sudo -u postgres psql -d records_ps -c "
+            GRANT USAGE ON SCHEMA public TO root;
+            GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO root;
+            GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO root;"
+            echo "===== privileges granted ====="
           '';
         };
       }
