@@ -58,7 +58,7 @@
             echo "===== nuking db ====="
             sudo -u postgres psql -d records_ps -c "DROP SCHEMA public CASCADE;CREATE SCHEMA public;"
             echo "===== recreating db ====="
-            psql -U root -d records_ps -f ${sql}
+            sudo -u postgres psql -d records_ps -f ${sql}
             echo "===== db recreated ====="
           '';
         };
