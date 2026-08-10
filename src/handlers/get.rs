@@ -112,7 +112,7 @@ pub async fn get_messages(_auth: AuthUser, State(inf): State<AppState>, Path(gro
     );
 }
 
-pub async fn pull(State(inf): State<AppState>, Path(object_id): Path<Uuid>) -> Result<impl IntoResponse, InternalError> {
+pub async fn pull(_auth: AuthUser, State(inf): State<AppState>, Path(object_id): Path<Uuid>) -> Result<impl IntoResponse, InternalError> {
     let obj: Object = 
     inf.db_interface
     .select::<Uuid, Object>(Some((Object::id_columns(), &[object_id])))

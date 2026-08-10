@@ -3,6 +3,9 @@ name = "Hermes"
 version = "0.1.0"
 edition = "2024"
 
+[toolchain]
+channel = "nightly"
+
 [dependencies]
 derive_macros = { path = "./derive_macros" }
 tokio = { version = "1", features = ["full"] }
