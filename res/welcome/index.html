@@ -3,17 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="http://localhost:8000/app/mainCss">
+    <title>Welcome</title>
+    <link rel="stylesheet" href="http://localhost:8000/app/main_css">
     <link rel="stylesheet" href="./style.css">
-    <title>asd</title>
 </head>
 <body>
+    <nav>
+        <h1>Welcome</h1>
+
+        <div id="buttonsContainer">
+            <form action="http://localhost:8000/app/login">
+                <input type="submit" value="Log In">
+            </form>
+    
+            <form action="http://localhost:8000/app/signup">
+                <input type="submit" value="Sign Up">
+            </form>
+            
+            <img src="../images/foli.png" id="profile">
+        </div>
+
+    </nav>
+
     <div id="container">
-        <h1>Welcome to Hermes</h1>
-        <form action="http://localhost:8000/app/login" method="GET">
-            <input type="submit" value="Log In">
-        </form>
+        <h2>Welcome to Hermes</h2>
+
+        <p>Hermes is a "Lorem ipsum dolor sit, amet consectetur adipisicing elit. Maiores, officia ducimus reiciendis nobis repellendus, commodi eaque eum totam non id odio a aliquid? Consequuntur eaque possimus quisquam deserunt quos ipsum!"</p>
     </div>
 </body>
-<script src="script.js"></script>
 </html>

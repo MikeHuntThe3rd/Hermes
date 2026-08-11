@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Log In</title>
-    <link rel="stylesheet" href="http://localhost:8000/app/mainCss">
-    <link rel="stylesheet" href="http://localhost:8000/app/loginCss">
+    <link rel="stylesheet" href="http://localhost:8000/app/main_css">
+    <link rel="stylesheet" href="http://localhost:8000/app/login_css">
 </head>
 <body>
     <nav>
@@ -16,14 +16,17 @@
     <div id="container">
         <form action="http://localhost:8000/app/main">
             <label for="username">Username</label><br>
-            <input type="text" name="username" placeholder="Username"><br>
+            <input type="text" id="username" placeholder="Username"><br>
             <label for="password">Password</label><br>
-            <input type="password" name="password" placeholder="Password"><br>
-            <input type="submit" value="Log In">
+            <input type="password" id="password" placeholder="Password"><br>
+            <input type="submit" value="Log In" id="login">
         </form>
 
-        <form action="http://localhost:8000/app/signup">
-            <input type="submit" value="Sign Up">
+        <form action="http://localhost:8000/app/sign_up">
+            <div style="display: flex; justify-content: space-around;">
+                <label id="signUpLabel">Don't have an account yet?</label>
+                <input type="submit" value="Sign Up" id="signUp">
+            </div>
         </form>
     </div>
 </body>

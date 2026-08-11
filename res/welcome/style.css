@@ -1,28 +1,59 @@
-body{
-    background: linear-gradient(to top left, #0100b0, #2055f5);
+nav{
+    display: flex;
 }
 
-form{
-    margin: auto;
-    width: fit-content;
+h2{
+    margin: 0;
+    font-size: 4vmin;
 }
 
-h1{
-    font-variant: normal;
-    font-size: 5vh;
+p{
+    font-size: 2vmin;
 }
 
-input{
-    font-size: 3vh;
-    border-color: #c5c5c5;
+img{
+    height: 4vmin;
+    width: 4vmin;
+}
+
+input[type="submit"]:hover{
+    filter: brightness(1.06);
+}
+
+form, input[type="submit"]{
+    font-size: 2vmin;
+    height: 4vmin;
+    padding: 0.5vmin;
+    margin: 0;
+}
+
+input[type="submit"]{
+    border: 2px outset rgb(203, 203, 203);
+    background-color: #afafaf;
+}
+
+#buttonsContainer{
+    width: 100vw;
+    justify-content: flex-end;
+    margin-right: 1vw;
+    display: flex;
+    align-items: center;
+    column-gap: 1vmin;
 }
 
 #container{
+    color: black;
+    width: 40vmin;
+    height: 40vmin;
+    background-color: rgba(224, 224, 224, 0.7);
+    padding: 5vmin;
+    border: 2px solid rgba(82, 82, 82, 0.7);    
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-around;
     position: absolute;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    margin: auto;
-    width: fit-content;
-    height: fit-content;
 }

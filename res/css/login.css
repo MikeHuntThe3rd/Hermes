@@ -1,32 +1,54 @@
-body{
-    background-color: #afafaf;
-    color: black;
-}
-
 input{
-    font-size: 3vh;
+    font-size: 3vmin;
+    width: 100%;
 }
 
 input[type="text"], input[type="password"]{
     border: none;
+    margin-bottom: 1vmin;
     border-top: 2px solid black;
     border-left: 2px solid black;
 }
 
 input[type="submit"]{
     border-color: #cccccc;
-    display: block;
-    margin: 10px auto auto auto;
     background-color: #afafaf;
+    font-size: 2.3vmin;
+    width: fit-content;
+}
+
+form{
+    width: 100%;
+}
+
+label{
+    font-size: 3vmin;
+}
+
+#signUpLabel, #loginLabel{
+    display: block;
+    width: fit-content;
+    font-size: 2.3vmin;
+}
+
+#login, #signUp{
+    display: block;
+    margin: 1vmin auto 0 auto;
 }
 
 #container{
-    padding: 30px;
+    color: black;
+    width: 40vmin;
+    height: 40vmin;
+    background-color: rgba(174, 174, 174, 0.8);
+    padding: 5vmin;
+    border: 2px solid rgba(82, 82, 82, 0.8);    
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-around;
     position: absolute;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    font-size: 4vh;
-    background-color: #afafaf;
-    width: fit-content;
 }

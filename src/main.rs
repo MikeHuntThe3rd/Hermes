@@ -7,7 +7,7 @@ mod db;
 use std::{path, time::Duration};
 
 use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit};
-use tower_http::services::{ServeDir};
+use tower_http::services::{ServeDir, ServeFile};
 use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
 
 use db::DbInterface;
@@ -82,6 +82,13 @@ async fn main() {
     .route("/upload", post(upload)).layer(DefaultBodyLimit::max(10000000))
     .route("/pull/{object_id}", get(pull)).layer(DefaultBodyLimit::max(10000000))
     .with_state(state);
+
+    let app = Router::new()
+    .nest_service("/login", ServeDir::new("res/login"))
+    .nest_service("/sign_up", ServeDir::new("res/sign_up"))
+    .nest_service("/main", ServeDir::new("res/main"))
+    .nest_service("/main_css", ServeFile::new("res/css/main.css"))
+    .nest_service("/login_css", ServeFile::new("res/css/login.css"));
 
     let interface: Router<()> = Router::new()
     .nest("/apiV1", api)
