@@ -88,7 +88,9 @@ async fn main() {
     .nest_service("/sign_up", ServeDir::new("res/sign_up"))
     .nest_service("/main", ServeDir::new("res/main"))
     .nest_service("/main_css", ServeFile::new("res/css/main.css"))
-    .nest_service("/login_css", ServeFile::new("res/css/login.css"));
+    .nest_service("/login_css", ServeFile::new("res/css/login.css"))
+    .nest_service("/background", ServeFile::new("res/images/bg.png"))
+    .nest_service("/profile", ServeFile::new("res/images/user.png"));
 
     let interface: Router<()> = Router::new()
     .nest("/apiV1", api)

@@ -1,5 +1,5 @@
 body{
-    background: url('../images/bg.png');
+    background: url('http://localhost:8000/app/background');
     background-size: cover;
     background-repeat: no-repeat;
     color: black;
