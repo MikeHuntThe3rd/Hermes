@@ -20,6 +20,8 @@ use handlers::{post::*
     ,get::*
     ,patch::*};
 
+use crate::db::LiteInterface;
+
 pub async fn get_app_state() -> AppState {
     if !path::Path::new(TEMP_PTH_STR).exists() ||
     !path::Path::new(OBJ_PTH_STR).exists()
@@ -45,7 +47,8 @@ pub async fn get_app_state() -> AppState {
     
     return AppState {
         jwt_secret: vec![],
-        ps_interface: PsInterface::new().await.expect("failed to create the db connection"),
+        ps_interface: PsInterface::new().await.expect("failed to create the postgres db connection"),
+        lite_interface: LiteInterface::new().await.expect("failed to create the sqlite db connection"),
         redis_client: client,
     };
 }

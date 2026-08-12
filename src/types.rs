@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 pub const TEMP_PTH_STR: &'static str = "/var/lib/hermes_objs/temp/";
 pub const OBJ_PTH_STR: &'static str = "/var/lib/hermes_objs/objs/";
+pub const LOGS_PTH_STR: &'static str = "/var/lib/hermes_objs/logs/log.db";
 
 /* ===== TRAITS ===== */
 
@@ -134,10 +135,20 @@ pub struct Relation {
     related_user: Uuid,
     state: RelationT,
 }
+
+#[derive(sqlx::FromRow, Serialize, Bindable)]
+#[ids="id"]
+pub struct Log {
+    pub id: Option<i32>,
+    pub request: String,
+    pub response: String,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub jwt_secret: Vec<u8>,
     pub ps_interface: PsInterface,
+    pub lite_interface: LiteInterface,
     pub redis_client: Client,
 }
 

@@ -1,9 +1,14 @@
-use sqlx::{Encode, FromRow, Pool, Postgres, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}};
+use sqlx::{Encode, FromRow, Pool, Postgres, Sqlite, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}, sqlite::{self, SqliteArguments, SqliteConnectOptions, SqliteRow}};
 use crate::types::*;
 
 #[derive(Clone)]
 pub struct PsInterface {
     pool: Pool<Postgres>,
+}
+
+#[derive(Clone)]
+pub struct LiteInterface {
+    conn: Pool<Sqlite>,
 }
 
 impl PsInterface {
@@ -26,7 +31,7 @@ impl PsInterface {
         let vals: Vec<String>= (1..=T::base_columns().len())
         .map(|i| format!("${}", i))
         .collect();
-
+        
         let sql = format!("INSERT INTO {} ({}) VALUES ({}) RETURNING *;"
         , T::table_name()
         , T::base_columns().join(", ")
@@ -130,4 +135,20 @@ impl PsInterface {
         Ok(res)
     }
 
+}
+
+impl LiteInterface {
+    pub async fn new() -> Result<LiteInterface, sqlx::Error> {
+
+        let opt: SqliteConnectOptions = sqlite::SqliteConnectOptions::new().filename(LOGS_PTH_STR).journal_mode(sqlite::SqliteJournalMode::Wal);
+
+        let pool = sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(opt).await?;
+
+        return Ok(LiteInterface { conn: pool });
+    }
+
+    pub async fn insert() -> Result<(), sqlx::Error> {
+        
+        return Ok(());
+    }
 }
