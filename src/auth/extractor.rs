@@ -9,7 +9,7 @@ use fred::interfaces::KeysInterface;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use uuid::Uuid;
 
-use crate::{errors::error_t::*, types::{AppState, Claims, TokenType}};
+use crate::{responses::error_t::*, types::{AppState, Claims, TokenType}};
 
 #[derive(Clone)]
 pub struct AuthUser {

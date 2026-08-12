@@ -39,6 +39,7 @@
 
           buildInputs = [
             pkgs.openssl
+            pkgs.sqlite
           ];
 
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";

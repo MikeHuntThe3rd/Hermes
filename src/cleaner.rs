@@ -6,7 +6,7 @@ use std::{ffi::OsString, time::Duration};
 use tokio::fs as tfs;
 
 pub async fn cleaner_subprocess(state: AppState) {
-    let inf = state.db_interface;
+    let inf = state.ps_interface;
     loop {
         tokio::time::sleep(Duration::from_mins(5)).await;
 

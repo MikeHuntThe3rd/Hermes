@@ -65,8 +65,16 @@ where T: Serialize
 #[ids = "id"]
 pub struct User {
     pub id: Option<Uuid>,
+    pub nicname: String,
     pub username: String,
     pub password: String,
+    pub pfp: Option<Uuid>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct StrippedUser {
+    pub id: Option<Uuid>,
+    pub nicname: String,
     pub pfp: Option<Uuid>,
 }
 
@@ -129,7 +137,7 @@ pub struct Relation {
 #[derive(Clone)]
 pub struct AppState {
     pub jwt_secret: Vec<u8>,
-    pub db_interface: DbInterface,
+    pub ps_interface: PsInterface,
     pub redis_client: Client,
 }
 

@@ -1,8 +1,9 @@
 mod handlers;
 mod auth;
 mod types;
-mod errors;
 mod cleaner;
+mod logging;
+mod responses;
 mod db;
 
 use std::{path, time::Duration};
@@ -11,7 +12,7 @@ use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimi
 use tower_http::services::{ServeDir};
 use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
 
-use db::DbInterface;
+use db::PsInterface;
 use types::{AppState, TEMP_PTH_STR, OBJ_PTH_STR};
 use auth::endpoints::*;
 use handlers::{post::*
@@ -44,7 +45,7 @@ pub async fn get_app_state() -> AppState {
     
     return AppState {
         jwt_secret: vec![],
-        db_interface: DbInterface::new().await.expect("failed to create the db connection"),
+        ps_interface: PsInterface::new().await.expect("failed to create the db connection"),
         redis_client: client,
     };
 }

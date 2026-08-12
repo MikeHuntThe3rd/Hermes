@@ -2,12 +2,12 @@ use sqlx::{Encode, FromRow, Pool, Postgres, postgres::{PgArguments, PgConnectOpt
 use crate::types::*;
 
 #[derive(Clone)]
-pub struct DbInterface {
+pub struct PsInterface {
     pool: Pool<Postgres>,
 }
 
-impl DbInterface {
-    pub async fn new() -> Result<DbInterface, sqlx::Error> {
+impl PsInterface {
+    pub async fn new() -> Result<PsInterface, sqlx::Error> {
         let opt = PgConnectOptions::new()
         .socket("/run/postgresql")
         .username(&std::env::var("PS_USERNAME").expect("a PS_USERNAME enviroment variable is expected"))
@@ -17,7 +17,7 @@ impl DbInterface {
         .max_connections(10)
         .connect_with(opt.clone()).await?;
     
-        return Ok(DbInterface{ pool: conn_pool});
+        return Ok(PsInterface{ pool: conn_pool});
     }
 
     pub async fn insert<T>(&self, data: T) -> Result<T, sqlx::Error>

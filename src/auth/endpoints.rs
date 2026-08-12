@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 use crate::types::*;
-use crate::{auth::{creation::create_jwt}, errors::error_t::*};
+use crate::{auth::{creation::create_jwt}, responses::error_t::*};
 
 #[derive(Serialize, Deserialize)]
 pub struct UserTokenObj {
@@ -14,7 +14,7 @@ pub struct UserTokenObj {
 }
 
 pub async fn login(State(inf): State<AppState>, Json(data): Json<User>) -> Result<Res<UserTokenObj>, GenericErr> {
-    let rows: Vec<User> = inf.db_interface
+    let rows: Vec<User> = inf.ps_interface
     .select(Some((&vec!["username", "password"], &vec![&data.username, &data.password])))
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -87,7 +87,7 @@ pub async fn refresh(State(inf): State<AppState>, Json(data): Json<RefreshBody>)
 }
 
 pub async fn sign_up(inf: State<AppState>, Json(data): Json<User>) -> Result<Res<UserTokenObj>, GenericErr> {
-    let usr = inf.db_interface.insert::<User>(data)
+    let usr = inf.ps_interface.insert::<User>(data)
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
     let id = if let Some(id_val) = usr.id {
