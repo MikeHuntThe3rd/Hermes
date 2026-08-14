@@ -3,6 +3,7 @@ use derive_macros::Bindable;
 use fred::clients::Client;
 use serde::{Serialize, Deserialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
+use crate::logging::Logs;
 use crate::db::*;
 use uuid::Uuid;
 /* ===== CONSTS ===== */
@@ -28,6 +29,11 @@ pub trait Bindable {
         where Self: Sized;
 }
 
+pub trait Logging<O> 
+where O: serde::Serialize
+{
+    async fn log_if_err(self, logs: &mut Logs<O>) -> Self;
+}
 /* ===== ENUMS ===== */
 
 #[derive(PartialEq)]
@@ -52,6 +58,7 @@ pub enum RelationT {
 }
 
 /* ===== STRUCTS ===== */
+
 
 pub struct Res<T>
 where T: Serialize
@@ -134,14 +141,6 @@ pub struct Relation {
     relating_user: Uuid,
     related_user: Uuid,
     state: RelationT,
-}
-
-#[derive(sqlx::FromRow, Serialize, Bindable)]
-#[ids="id"]
-pub struct Log {
-    pub id: Option<i32>,
-    pub request: String,
-    pub response: String,
 }
 
 #[derive(Clone)]

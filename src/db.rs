@@ -1,5 +1,5 @@
-use sqlx::{Encode, FromRow, Pool, Postgres, Sqlite, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}, sqlite::{self, SqliteArguments, SqliteConnectOptions, SqliteRow}};
-use crate::types::*;
+use sqlx::{Encode, FromRow, Pool, Postgres, Sqlite, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}, sqlite::{self, SqliteConnectOptions}};
+use crate::{logging::Logs, types::*};
 
 #[derive(Clone)]
 pub struct PsInterface {
@@ -139,16 +139,31 @@ impl PsInterface {
 
 impl LiteInterface {
     pub async fn new() -> Result<LiteInterface, sqlx::Error> {
+        let initalizer_sql: &'static str = "CREATE TABLE IF NOT EXIST logs(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request TEXT,
+            response TEXT
+        )";
 
         let opt: SqliteConnectOptions = sqlite::SqliteConnectOptions::new().filename(LOGS_PTH_STR).journal_mode(sqlite::SqliteJournalMode::Wal);
-
         let pool = sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(opt).await?;
+
+        sqlx::query(initalizer_sql).execute(&pool).await?;
 
         return Ok(LiteInterface { conn: pool });
     }
 
-    pub async fn insert() -> Result<(), sqlx::Error> {
-        
+    pub async fn insert<O>(&self, logs: Logs<O>) -> Result<(), sqlx::Error> 
+    where O: serde::Serialize
+    {
+        let sql: &'static str = "INSERT INTO logs (request, response) VALUES (json($1), json($2))";
+        let (req, res) = (
+            serde_json::to_string(&logs.request).unwrap_or("json parsing failed here".to_string()),
+            serde_json::to_string(&logs.response).unwrap_or("json parsing failed here".to_string())
+        );
+
+        sqlx::query(sql).bind(req).bind(res).execute(&self.conn).await?;
+
         return Ok(());
     }
 }

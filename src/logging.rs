@@ -1,22 +1,23 @@
-use crate::types::{Res, AppState};
+use crate::types::{AppState, Logging, Res};
 use crate::responses::error_t::InternalError;
-use axum::Json;
 use axum::extract::{FromRequest, FromRef, Request};
 use axum::http::StatusCode;
-use axum::body::Body;
+use serde::Serialize;
 
+#[derive(Serialize)]
 pub struct Header {
     pub key: String,
     pub val: String,
 }
 
+#[derive(Serialize)]
 pub struct Req {
     pub uri: String,
     pub method: String,
     pub headers: Vec<Header>,
-    pub body: Json<Body>,
+    pub body: String,
 }
-pub struct Log<O> 
+pub struct Logs<O> 
 where O: serde::Serialize
 {
     pub id: Option<i64>,
@@ -24,7 +25,7 @@ where O: serde::Serialize
     pub response: Res<O>,
 }
 
-impl<T, O> FromRequest<T> for Log<O> 
+impl<T, O> FromRequest<T> for Logs<O> 
 where T: Sync + Send, AppState: FromRef<T>,
 O: serde::Serialize
 {
@@ -43,13 +44,13 @@ O: serde::Serialize
             hdrs.push(Header { key: key.to_string(), val: val.to_str().unwrap_or("failed to extract header val").to_string() });
         }
 
-        let bdy: Json<Body> = if uri_var.contains("upload") {
-            Json(Body::empty())
+        let bdy: String = if uri_var.contains("upload") {
+            "body is not provided for uploads".to_string()
         } else {
-            Json(Body::new(req))
+            req.body()
         };
         
-        Ok( Log{
+        Ok( Logs{
             id: None,
             request: Req { uri: uri_var, method: meth, headers: hdrs, body: bdy },
             response: Res {status: StatusCode::OK, success: true, msg: String::new(), data: None},
@@ -57,10 +58,20 @@ O: serde::Serialize
     }
 }
 
-impl<O> Log<O> 
+impl<O, T, E> Logging<O> for Result<T, E> 
 where O: serde::Serialize
 {
-    async fn write_log() {
-        
+    async fn log_if_err(self, logs: &mut Logs<O>) -> Self {
+        if self.is_err() {
+            
+        }
+        return self;
+    }
+}
+impl<O> Logs<O> 
+where O: serde::Serialize
+{
+    async fn write_log(mut self, func: impl FnOnce(&Self)) -> Self {
+        self
     }
 }
