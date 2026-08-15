@@ -141,9 +141,10 @@ impl LiteInterface {
     pub async fn new() -> Result<LiteInterface, sqlx::Error> {
         let initalizer_sql: &'static str = "CREATE TABLE IF NOT EXIST logs(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            request TEXT,
-            response TEXT
-        )";
+            request TEXT NOT NULL,
+            response TEXT NOT NULL,
+            err_msg TEXT
+        );";
 
         let opt: SqliteConnectOptions = sqlite::SqliteConnectOptions::new().filename(LOGS_PTH_STR).journal_mode(sqlite::SqliteJournalMode::Wal);
         let pool = sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(opt).await?;
@@ -153,16 +154,25 @@ impl LiteInterface {
         return Ok(LiteInterface { conn: pool });
     }
 
-    pub async fn insert<O>(&self, logs: Logs<O>) -> Result<(), sqlx::Error> 
-    where O: serde::Serialize
+    pub async fn insert<I, O>(&self, logs: Logs<I, O>) -> Result<(), sqlx::Error> 
+    where O: serde::Serialize,
+    I: serde::Serialize
     {
-        let sql: &'static str = "INSERT INTO logs (request, response) VALUES (json($1), json($2))";
+        let sql2: &'static str = "INSERT INTO logs (request, response) VALUES (json($1), json($2))";
+        let sql3: &'static str = "INSERT INTO logs (request, response, err_msg) VALUES (json($1), json($2), $3)";
+        
         let (req, res) = (
             serde_json::to_string(&logs.request).unwrap_or("json parsing failed here".to_string()),
             serde_json::to_string(&logs.response).unwrap_or("json parsing failed here".to_string())
         );
 
-        sqlx::query(sql).bind(req).bind(res).execute(&self.conn).await?;
+        let query = if logs.err_msg.is_some() {
+            sqlx::query(sql3).bind(req).bind(res).bind(logs.err_msg)
+        } else {
+            sqlx::query(sql2).bind(req).bind(res)
+        };
+
+        query.execute(&self.conn).await?;
 
         return Ok(());
     }

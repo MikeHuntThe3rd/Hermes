@@ -29,11 +29,13 @@ pub trait Bindable {
         where Self: Sized;
 }
 
-pub trait Logging<O> 
-where O: serde::Serialize
+pub trait Logging<I, O> 
+where O: serde::Serialize,
+I: serde::Serialize
 {
-    async fn log_if_err(self, logs: &mut Logs<O>) -> Self;
+    fn log_if_err(self, logs: &mut Logs<I, O>) -> Self;
 }
+
 /* ===== ENUMS ===== */
 
 #[derive(PartialEq)]
@@ -58,7 +60,6 @@ pub enum RelationT {
 }
 
 /* ===== STRUCTS ===== */
-
 
 pub struct Res<T>
 where T: Serialize
