@@ -1,4 +1,4 @@
-use sqlx::{Encode, FromRow, Pool, Postgres, Sqlite, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}, sqlite::{self, SqliteConnectOptions}};
+use sqlx::{Encode, Execute, FromRow, Pool, Postgres, QueryBuilder, Sqlite, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}, sqlite::{self, SqliteConnectOptions}};
 use crate::{logging::Logs, types::*};
 
 #[derive(Clone)]
@@ -28,16 +28,20 @@ impl PsInterface {
     pub async fn insert<T>(&self, data: T) -> Result<T, sqlx::Error>
     where T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
-        let vals: Vec<String>= (1..=T::base_columns().len())
-        .map(|i| format!("${}", i))
-        .collect();
-        
-        let sql = format!("INSERT INTO {} ({}) VALUES ({}) RETURNING *;"
-        , T::table_name()
-        , T::base_columns().join(", ")
-        , vals.join(", "));
+        let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO ");
+        sql.push(T::table_name().to_string() + " (");
 
-        let query = data.bind_values(sqlx::query_as(&sql), BindVal::BASE);
+        let mut sepr = sql.separated(", ");
+        T::base_columns().iter().for_each(|col| {sepr.push(col);});
+
+        sql.push(") VALUES ( ");
+
+        let mut sepr = sql.separated(", ");
+        (1..=T::base_columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+
+        sql.push(") RETURNING *;");
+
+        let query = data.bind_values(sqlx::query_as(sql.build_query_as::<T>().sql()), BindVal::BASE);
         let res = query.fetch_one(&self.pool).await?;
         Ok(res)
     }
@@ -45,21 +49,31 @@ impl PsInterface {
     pub async fn update<T>(&self, data: T) -> Result<T, sqlx::Error>
     where T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
-        let vals: Vec<String>= (1..=T::columns().len())
-        .map(|i| format!("${}", i))
-        .collect();
+        let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("UPDATE ");
+        sql.push(T::table_name())
+        .push(" SET (");
 
-        let id_vals = &vals[0..T::id_columns().len()];
-        let base_vals = &vals[(T::id_columns().len())..vals.iter().len()];
+        let mut sepr = sql.separated(", ");
+        T::base_columns().iter().for_each(|col| {sepr.push(col);});
 
-        let sql = format!("UPDATE {} SET ({}) = ({}) WHERE ({}) = ({}) RETURNING *;"
-        , T::table_name()
-        , T::base_columns().join(", ")
-        , base_vals.join(", ")
-        , T::id_columns().join(", ")
-        , id_vals.join(", "));
+        sql.push(") = (");
 
-        let query = data.bind_values(sqlx::query_as(&sql), BindVal::ALL);
+        let mut sepr = sql.separated(", ");
+        (1..=T::base_columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+
+        sql.push(") WHERE (");
+
+        let mut sepr = sql.separated(", ");
+        T::id_columns().iter().for_each(|col| {sepr.push(col);});
+
+        sql.push(") = (");
+
+        let mut sepr = sql.separated(", ");
+        (1..=T::id_columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+
+        sql.push(") RETURNING *;");
+
+        let query = data.bind_values(sqlx::query_as(sql.build_query_as::<T>().sql()), BindVal::ALL);
         let res = query.fetch_one(&self.pool).await?;
         Ok(res)
     }
@@ -68,16 +82,22 @@ impl PsInterface {
     where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>
     , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
-        let vals: Vec<String>= (1..=T::id_columns().len())
-        .map(|i| format!("${}", i))
-        .collect();
 
-        let sql = format!("DELETE FROM {} WHERE ({}) = ({}) RETURNING *;"
-        ,T::table_name()
-        ,T::id_columns().join(", ")
-        ,vals.join(", "));
+        let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("DELETE FROM ");
+        sql.push(T::table_name())
+        .push(" WHERE (");
 
-        let mut query = sqlx::query_as(&sql);
+        let mut sepr = sql.separated(", ");
+        T::id_columns().iter().for_each(|col| {sepr.push(col);});
+
+        sql.push(") = (");
+        
+        let mut sepr = sql.separated(", ");
+        (1..=T::id_columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+
+        sql.push(") RETURNING *;");
+
+        let mut query = sqlx::query_as(sql.build_query_as::<T>().sql());
         for val in id_s {
             query = query.bind(val);
         }
@@ -89,38 +109,35 @@ impl PsInterface {
     where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>
     , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
-        let mut sql = format!("SELECT * FROM {}", T::table_name());
+        let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM ");
+        sql.push(T::table_name());
 
         if let Some(some_id_s) = id_s {
             if some_id_s.0.len() != some_id_s.1.len() {
                 return Err(sqlx::Error::InvalidArgument("given tuple arrays have different sizes".to_string()));
             }
 
-            let vals: Vec<String> = (1..=some_id_s.0.len())
-            .map(|i| format!("${}", i))
-            .collect();
+            sql.push(" WHERE (");
 
-            sql = format!("{} WHERE ({}) = ({});"
-            , sql
-            , some_id_s.0.join(", ")
-            , vals.join(", "));
+            let mut sepr = sql.separated(", ");
+            some_id_s.0.iter().for_each(|col| {sepr.push(col);});
+
+            sql.push(") = (");
+
+            let mut sepr = sql.separated(", ");
+            some_id_s.1.iter().for_each(|param| {sepr.push_bind(param);});
+
+            sql.push(");");
         }
         else {
-            sql += ";";
+            sql.push(";");
         }
 
-        let mut query: QueryAs<'_, Postgres, T, PgArguments> = sqlx::query_as(&sql);
-
-        if let Some(some_id_s) = id_s {
-            for val in some_id_s.1 {
-                query = query.bind(val);
-            }
-        }
+        let query: QueryAs<'_, Postgres, T, PgArguments> = sqlx::query_as(sql.build_query_as::<T>().sql());
 
         let res = query.fetch_all(&self.pool).await?;
         Ok(res)
     }
-
 
     pub async fn generic_exec(&self, query: Query<'_, Postgres, PgArguments>) -> Result<(), sqlx::Error>
     {
