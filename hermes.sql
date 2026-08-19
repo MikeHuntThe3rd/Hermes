@@ -1,9 +1,12 @@
 
 CREATE TYPE relation_t AS ENUM ('Friends', 'Pending', 'Blocked');
+CREATE TYPE privilege_t AS ENUM ('Proprietor', 'Consumer');
+CREATE TYPE rank_t AS ENUM ('Owner', 'Admin', 'User');
 
 CREATE TABLE "users" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "nicname" text NOT NULL,
+  "prv" privilege_t NOT NULL,
   "username" text NOT NULL UNIQUE,
   "password" text NOT NULL,
   "pfp" uuid

@@ -6,12 +6,13 @@ mod logging;
 mod responses;
 mod db;
 
-use std::{path, time::Duration};
+use std::{env, path, time::Duration};
 
 use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit};
 use tower_http::services::{ServeDir};
 use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
 
+use crate::types::PrivilegeT;
 use db::PsInterface;
 use types::{AppState, TEMP_PTH_STR, OBJ_PTH_STR};
 use auth::endpoints::*;
@@ -20,9 +21,23 @@ use handlers::{post::*
     ,get::*
     ,patch::*};
 
-use crate::db::LiteInterface;
+use crate::{db::LiteInterface, types::User};
 
-pub async fn get_app_state() -> AppState {
+async fn ensure_master_user(state: AppState) {
+    let inf = state.ps_interface;
+    let (usr_nm, pswrd) = (env::var("M_USERNAME").expect("the variable for the master user's username is expected")
+    , env::var("M_PASSWORD").expect("the variable for the master user's password is expected"));
+
+    let user_s = inf.select::<String, User>(Some((&["", ""], &vec![usr_nm.clone(), pswrd.clone()])))
+    .await.expect("master user querying is expected to succeed");
+
+    if user_s.len() < 1 {
+        inf.insert::<User>(User { id: None, nicname: "master".to_string(), prv: PrivilegeT::Proprietor, username: usr_nm, password: pswrd, pfp: None })
+        .await.expect("master user inserting is expected to succeed");
+    }
+}
+
+async fn setup() -> AppState {
     if !path::Path::new(TEMP_PTH_STR).exists() ||
     !path::Path::new(OBJ_PTH_STR).exists()
     {
@@ -44,19 +59,23 @@ pub async fn get_app_state() -> AppState {
         println!("{:?}: Connection error: {:?}", server, error);
         Ok(())
     });
-    
-    return AppState {
-        jwt_secret: vec![],
+
+    let state = AppState {
+        jwt_secret: env::var("JWT_SECRET").expect("the jwt secret is expected to exist").as_bytes().to_owned(),
         ps_interface: PsInterface::new().await.expect("failed to create the postgres db connection"),
         lite_interface: LiteInterface::new().await.expect("failed to create the sqlite db connection"),
         redis_client: client,
     };
+
+    ensure_master_user(state.clone()).await;
+    
+    return state;
 }
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().expect("a .env file is expected");
-    let state = get_app_state().await;
+    let state = setup().await;
     tokio::spawn(cleaner::cleaner_subprocess(state.clone()));
 
     let auth: Router<AppState> = Router::new()

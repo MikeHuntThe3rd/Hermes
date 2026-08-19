@@ -6,11 +6,13 @@ pub enum AuthError {
     InvalidCredentials,
     WrongTokenType,
     ExpiredToken,
+    MismatchedPriviligeLevels,
 }
 
 pub enum InternalError {
     DbError,
     RedisError,
+    UncleanRedisError,
     DecodeEncodeErr,
     OperationsError,
     NoMatches,

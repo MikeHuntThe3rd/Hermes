@@ -12,6 +12,9 @@ pub const TEMP_PTH_STR: &'static str = "/var/lib/hermes_objs/temp/";
 pub const OBJ_PTH_STR: &'static str = "/var/lib/hermes_objs/objs/";
 pub const LOGS_PTH_STR: &'static str = "/var/lib/hermes_objs/logs/log.db";
 
+pub const BLACKLIST_STR: &'static str = "jwt:blacklist:";
+pub const INVITES_BLACKLIST_STR: &'static str = "jwt:blacklist:invites:";
+
 /* ===== TRAITS ===== */
 
 pub trait Bindable {
@@ -56,7 +59,21 @@ pub enum TokenType {
 pub enum RelationT {
     Friends, 
     Pending, 
-    Blocked
+    Blocked,
+}
+#[derive(Debug, sqlx::Type, Serialize, Deserialize, Clone, PartialEq)]
+#[sqlx(type_name = "privilege_t")]
+pub enum PrivilegeT {
+    Proprietor, 
+    Consumer, 
+}
+
+#[derive(Debug, sqlx::Type, Serialize, Deserialize)]
+#[sqlx(type_name = "rank_t")]
+pub enum RankT {
+    Owner, 
+    Admin, 
+    User,
 }
 
 /* ===== STRUCTS ===== */
@@ -75,6 +92,7 @@ where T: Serialize
 pub struct User {
     pub id: Option<Uuid>,
     pub nicname: String,
+    pub prv: PrivilegeT,
     pub username: String,
     pub password: String,
     pub pfp: Option<Uuid>,
@@ -84,6 +102,7 @@ pub struct User {
 pub struct StrippedUser {
     pub id: Option<Uuid>,
     pub nicname: String,
+    pub prv: PrivilegeT,
     pub pfp: Option<Uuid>,
 }
 
@@ -159,6 +178,14 @@ pub struct Claims {
     pub iat: usize,
     pub exp: usize,
     pub tkn_type: TokenType,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PrivClaims {
+    pub priv_level: PrivilegeT,
+    pub jti: Uuid,
+    pub iat: usize,
+    pub exp: usize,
 }
 
 #[derive(Serialize, Deserialize)]

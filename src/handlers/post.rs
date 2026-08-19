@@ -27,7 +27,7 @@ pub async fn add_message(_auth: AuthUser, inf: State<AppState>, Json(data): Json
 }
 
 pub async fn upload(_auth: AuthUser, inf: State<AppState>, mut data: Multipart) -> Result<Res<ObjectIds>, InternalError> {
-    let match_err = move |status: StatusCode, rm: Option<String>| -> InternalError {
+    let match_err = |status: StatusCode, rm: Option<String>| -> InternalError {
         if let Some(rm_path) = rm {
             tokio::spawn(tokio::fs::remove_file(rm_path));
         }
@@ -38,7 +38,7 @@ pub async fn upload(_auth: AuthUser, inf: State<AppState>, mut data: Multipart) 
         };
     };
 
-    let cleanup_err = move |path: String, error: InternalError| -> InternalError {
+    let cleanup_err = |path: String, error: InternalError| -> InternalError {
         tokio::spawn(tokio::fs::remove_file(path));
         error
     };

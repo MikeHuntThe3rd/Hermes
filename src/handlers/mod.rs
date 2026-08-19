@@ -7,6 +7,6 @@ use crate::types::{User, StrippedUser};
 
 impl User {
     fn strip(&self) -> StrippedUser {
-        return StrippedUser { id: self.id, nicname: self.nicname.clone(), pfp: self.pfp };
+        return StrippedUser { id: self.id, nicname: self.nicname.clone(), prv: self.prv.clone() , pfp: self.pfp };
     }
 }
