@@ -91,7 +91,7 @@ where T: Serialize
 #[ids = "id"]
 pub struct User {
     pub id: Option<Uuid>,
-    pub nicname: String,
+    pub nickname: String,
     pub prv: PrivilegeT,
     pub username: String,
     pub password: String,
@@ -186,16 +186,5 @@ pub struct PrivClaims {
     pub jti: Uuid,
     pub iat: usize,
     pub exp: usize,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct TokenPair {
-    pub access_tkn: String,
-    pub refresh_tkn: String,
-}
-
-#[derive(Deserialize)]
-pub struct RefreshBody {
-    pub refresh_tkn: String,
 }
 

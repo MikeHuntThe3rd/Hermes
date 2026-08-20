@@ -37,8 +37,8 @@ impl IntoResponse for AuthError {
             AuthError::MissingToken => (StatusCode::UNAUTHORIZED, "jwt token required but not found"),
             AuthError::WrongTokenType => (StatusCode::UNAUTHORIZED, "jwt type doesn't match the expected token type of the request"),
             AuthError::ExpiredToken => (StatusCode::UNAUTHORIZED, "given jwt is listed as expired"),
-            AuthError::MismatchedPriviligeLevels => (StatusCode::UNAUTHORIZED, "provided privilige level doesnt match the privilige allowed by the invite"),
             AuthError::InvalidPrivilige => (StatusCode::UNAUTHORIZED, "provided privilige level isnt high enough"),
+            AuthError::InvalidNickname => (StatusCode::UNAUTHORIZED, "provided username does not meet the required 3 character limit"),
         };
 
         let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 

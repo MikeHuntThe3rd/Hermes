@@ -14,7 +14,31 @@ pub struct UserTokenObj {
     pub token_data: TokenPair,
 }
 
-pub async fn login(State(inf): State<AppState>, Json(data): Json<User>) -> Result<Res<UserTokenObj>, GenericErr> {
+#[derive(Deserialize)]
+pub struct RefreshBody {
+    pub refresh_tkn: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TokenPair {
+    pub access_tkn: String,
+    pub refresh_tkn: String,
+}
+
+#[derive(Deserialize)]
+pub struct LoginCred {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Deserialize)]
+pub struct SignupCred {
+    pub nickname: String,
+    pub username: String,
+    pub password: String,
+}
+
+pub async fn login(State(inf): State<AppState>, Json(data): Json<LoginCred>) -> Result<Res<UserTokenObj>, GenericErr> {
     let rows: Vec<User> = inf.ps_interface
     .select(Some((&vec!["username", "password"], &vec![&data.username, &data.password])))
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
@@ -87,7 +111,7 @@ pub async fn refresh(State(inf): State<AppState>, Json(data): Json<RefreshBody>)
     return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: Some(res) });
 }
 
-pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<User>) -> Result<Res<UserTokenObj>, GenericErr> {
+pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<SignupCred>) -> Result<Res<UserTokenObj>, GenericErr> {
     let key = format!("{INVITES_BLACKLIST_STR}{}", auth.claims.jti);
     let ttl = auth.claims.exp as i64 - OffsetDateTime::now_utc().unix_timestamp() + 60;
     let unset_blacklist = async |err: GenericErr| -> GenericErr {
@@ -101,15 +125,21 @@ pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<Us
         return Err(GenericErr::Auth(AuthError::InvalidToken));
     }
 
-    if auth.claims.priv_level != data.prv {
-        return Err(GenericErr::Auth(AuthError::MismatchedPriviligeLevels));
+    if data.nickname.trim().len() < 3 {
+        return Err(GenericErr::Auth(AuthError::InvalidNickname));
     }
-    
+
     inf.redis_client
     .set::<(), _, _>(&key, 1, Some(fred::types::Expiration::EX(ttl)), None, false)
     .await.map_err(|_| GenericErr::Internal(InternalError::RedisError))?;
 
-    let usr = inf.ps_interface.insert::<User>(data)
+    let usr = inf.ps_interface.insert::<User>(User { 
+        id: None, 
+        nickname: data.nickname, 
+        prv: auth.claims.priv_level, 
+        username: data.username, 
+        password: data.password, 
+        pfp: None })
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
     let id = if let Some(id_val) = usr.id {

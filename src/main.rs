@@ -32,7 +32,7 @@ async fn ensure_master_user(state: AppState) {
     .await.expect("master user querying is expected to succeed");
 
     if user_s.len() < 1 {
-        inf.insert::<User>(User { id: None, nicname: "master".to_string(), prv: PrivilegeT::Proprietor, username: usr_nm, password: pswrd, pfp: None })
+        inf.insert::<User>(User { id: None, nickname: "master".to_string(), prv: PrivilegeT::Proprietor, username: usr_nm, password: pswrd, pfp: None })
         .await.expect("master user inserting is expected to succeed");
     }
 }
@@ -61,7 +61,7 @@ async fn setup() -> AppState {
     });
 
     let state = AppState {
-        jwt_secret: env::var("JWT_SECRET").expect("the jwt secret is expected to exist").as_bytes().to_owned(),
+        jwt_secret: env::var("JWT_SECRET").expect("the jwt secret is expected to exist").into_bytes(),
         ps_interface: PsInterface::new().await.expect("failed to create the postgres db connection"),
         lite_interface: LiteInterface::new().await.expect("failed to create the sqlite db connection"),
         redis_client: client,
