@@ -28,7 +28,7 @@ async fn ensure_master_user(state: AppState) {
     let (usr_nm, pswrd) = (env::var("M_USERNAME").expect("the variable for the master user's username is expected")
     , env::var("M_PASSWORD").expect("the variable for the master user's password is expected"));
 
-    let user_s = inf.select::<String, User>(Some((&["", ""], &vec![usr_nm.clone(), pswrd.clone()])))
+    let user_s = inf.select::<String, User>(Some((&["username", "password"], &vec![usr_nm.clone(), pswrd.clone()])))
     .await.expect("master user querying is expected to succeed");
 
     if user_s.len() < 1 {
@@ -89,6 +89,7 @@ async fn main() {
     .route("/add_group", post(add_group))
     .route("/add_group_member", post(add_group_member))
     .route("/add_message", post(add_message))
+    .route("/create_invite", post(create_invite))
     /* ===== GET ===== */
     .route("/get_friends", get(get_friends))
     .route("/get_groups", get(get_groups))

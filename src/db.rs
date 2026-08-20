@@ -59,7 +59,7 @@ impl PsInterface {
         sql.push(") = (");
 
         let mut sepr = sql.separated(", ");
-        (1..=T::base_columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+        ((T::id_columns().len() + 1)..=T::columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
 
         sql.push(") WHERE (");
 
@@ -73,7 +73,11 @@ impl PsInterface {
 
         sql.push(") RETURNING *;");
 
-        let query = data.bind_values(sqlx::query_as(sql.build_query_as::<T>().sql()), BindVal::ALL);
+        let asd = sql.build_query_as::<T>().sql();
+
+        println!("{:?}", asd);
+
+        let query = data.bind_values(sqlx::query_as(asd), BindVal::ALL);
         let res = query.fetch_one(&self.pool).await?;
         Ok(res)
     }
@@ -156,7 +160,7 @@ impl PsInterface {
 
 impl LiteInterface {
     pub async fn new() -> Result<LiteInterface, sqlx::Error> {
-        let initalizer_sql: &'static str = "CREATE TABLE IF NOT EXIST logs(
+        let initalizer_sql: &'static str = "CREATE TABLE IF NOT EXISTS logs(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             request TEXT NOT NULL,
             response TEXT NOT NULL,

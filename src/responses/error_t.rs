@@ -6,6 +6,7 @@ pub enum AuthError {
     InvalidCredentials,
     WrongTokenType,
     ExpiredToken,
+    InvalidPrivilige,
     MismatchedPriviligeLevels,
 }
 

@@ -1,9 +1,21 @@
 use axum::{Json, extract::{Multipart, State}, http::StatusCode};
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
+use uuid::Uuid;
 
-use crate::{auth::extractor::AuthUser, types::*, responses::error_t::InternalError};
+use crate::{auth::{creation::create_priv_jwt, extractor::AuthUser}, responses::error_t::{AuthError, GenericErr, InternalError}, types::*};
+
+#[derive(Serialize)]
+pub struct InvJwt {
+    pub jwt: String,
+}
+
+#[derive(Deserialize)]
+pub struct PrivLevel {
+    pub prv_level: PrivilegeT,
+}
 
 pub async fn add_group(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Group>) -> Result<Res<Group>, InternalError> {
     return match inf.ps_interface.insert::<Group>(data).await {
@@ -24,6 +36,29 @@ pub async fn add_message(_auth: AuthUser, inf: State<AppState>, Json(data): Json
         Ok(msg) => Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(msg) }),
         Err(_e) => Err(InternalError::DbError),
     }
+}
+
+pub async fn create_invite(auth: AuthUser, inf: State<AppState>, Json(data): Json<PrivLevel>) -> Result<Res<InvJwt>, GenericErr> {
+    let user = inf.ps_interface.select::<Uuid, User>(Some((&["id"], &vec![auth.user_id])))
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    let usr = user.first().ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    if usr.prv != PrivilegeT::Proprietor {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
+    }
+    
+    let jwt_str = create_priv_jwt(data.prv_level, &inf.jwt_secret)
+    .await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
+
+    let res: Res<InvJwt> = Res {
+        status: StatusCode::CREATED,
+        success: true,
+        msg: String::new(),
+        data: Some(InvJwt { jwt: jwt_str }),
+    };
+
+    return Ok(res);
 }
 
 pub async fn upload(_auth: AuthUser, inf: State<AppState>, mut data: Multipart) -> Result<Res<ObjectIds>, InternalError> {

@@ -38,6 +38,7 @@ impl IntoResponse for AuthError {
             AuthError::WrongTokenType => (StatusCode::UNAUTHORIZED, "jwt type doesn't match the expected token type of the request"),
             AuthError::ExpiredToken => (StatusCode::UNAUTHORIZED, "given jwt is listed as expired"),
             AuthError::MismatchedPriviligeLevels => (StatusCode::UNAUTHORIZED, "provided privilige level doesnt match the privilige allowed by the invite"),
+            AuthError::InvalidPrivilige => (StatusCode::UNAUTHORIZED, "provided privilige level isnt high enough"),
         };
 
         let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 
