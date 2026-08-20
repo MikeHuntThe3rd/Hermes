@@ -9,7 +9,7 @@ mod db;
 use std::{env, path, time::Duration};
 
 use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit};
-use tower_http::services::{ServeDir};
+use tower_http::{cors::{self, CorsLayer}, services::ServeDir};
 use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
 
 use crate::types::PrivilegeT;
@@ -107,6 +107,7 @@ async fn main() {
     /* ===== OBJECTS ===== */
     .route("/upload", post(upload)).layer(DefaultBodyLimit::max(10000000))
     .route("/pull/{object_id}", get(pull)).layer(DefaultBodyLimit::max(10000000))
+    .layer(CorsLayer::very_permissive())
     .with_state(state);
 
     let interface: Router<()> = Router::new()
