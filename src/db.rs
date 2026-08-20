@@ -1,4 +1,4 @@
-use sqlx::{Encode, Execute, FromRow, Pool, Postgres, QueryBuilder, Sqlite, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}, sqlite::{self, SqliteConnectOptions}};
+use sqlx::{Encode, FromRow, Pool, Postgres, QueryBuilder, Sqlite, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}, sqlite::{self, SqliteConnectOptions}};
 use crate::{logging::Logs, types::*};
 
 #[derive(Clone)]
@@ -41,7 +41,7 @@ impl PsInterface {
 
         sql.push(") RETURNING *;");
 
-        let query = data.bind_values(sqlx::query_as(sql.build_query_as::<T>().sql()), BindVal::BASE);
+        let query = data.bind_values(sql.build_query_as::<T>(), BindVal::BASE);
         let res = query.fetch_one(&self.pool).await?;
         Ok(res)
     }
@@ -73,11 +73,7 @@ impl PsInterface {
 
         sql.push(") RETURNING *;");
 
-        let asd = sql.build_query_as::<T>().sql();
-
-        println!("{:?}", asd);
-
-        let query = data.bind_values(sqlx::query_as(asd), BindVal::ALL);
+        let query = data.bind_values(sql.build_query_as::<T>(), BindVal::ALL);
         let res = query.fetch_one(&self.pool).await?;
         Ok(res)
     }
@@ -101,7 +97,7 @@ impl PsInterface {
 
         sql.push(") RETURNING *;");
 
-        let mut query = sqlx::query_as(sql.build_query_as::<T>().sql());
+        let mut query = sql.build_query_as::<T>();
         for val in id_s {
             query = query.bind(val);
         }
@@ -137,9 +133,7 @@ impl PsInterface {
             sql.push(";");
         }
 
-        let query: QueryAs<'_, Postgres, T, PgArguments> = sqlx::query_as(sql.build_query_as::<T>().sql());
-
-        let res = query.fetch_all(&self.pool).await?;
+        let res = sql.build_query_as::<T>().fetch_all(&self.pool).await?;
         Ok(res)
     }
 
