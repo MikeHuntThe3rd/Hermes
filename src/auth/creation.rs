@@ -1,7 +1,7 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
-use crate::types::{Claims, TokenType};
+use crate::types::{Claims, PrivClaims, PrivilegeT, TokenType};
 
 pub async fn create_jwt(
     user_id: Uuid,
@@ -20,6 +20,23 @@ pub async fn create_jwt(
         iat: current_t.unix_timestamp() as usize,
         exp: expr_t.unix_timestamp() as usize,
         tkn_type: tkn_type,
+    };
+
+    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret))
+}
+
+pub async fn create_priv_jwt(
+    priv_level: PrivilegeT,
+    secret: &[u8]) -> Result<String, jsonwebtoken::errors::Error>
+{
+    let current_t = OffsetDateTime::now_utc();
+    let expr_t = current_t + Duration::minutes(15);
+
+    let claims = PrivClaims {
+        priv_level: priv_level,
+        jti: Uuid::new_v4(),
+        iat: current_t.unix_timestamp() as usize,
+        exp: expr_t.unix_timestamp() as usize,
     };
 
     encode(&Header::default(), &claims, &EncodingKey::from_secret(secret))

@@ -1,33 +1,71 @@
 use axum::{Json, extract::{Multipart, State}, http::StatusCode};
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
+use uuid::Uuid;
 
-use crate::{auth::extractor::AuthUser, types::*, errors::error_t::InternalError};
+use crate::{auth::{creation::create_priv_jwt, extractor::AuthUser}, responses::error_t::{AuthError, GenericErr, InternalError}, types::*};
+
+#[derive(Serialize)]
+pub struct InvJwt {
+    pub jwt: String,
+}
+
+#[derive(Deserialize)]
+pub struct PrivLevel {
+    pub prv_level: PrivilegeT,
+}
 
 pub async fn add_group(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Group>) -> Result<Res<Group>, InternalError> {
-    return match inf.db_interface.insert::<Group>(data).await {
+    return match inf.ps_interface.insert::<Group>(data).await {
         Ok(grp) => Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(grp) }),
         Err(_e) => Err(InternalError::DbError),
     }
 }
 
 pub async fn add_group_member(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Group_Member>) -> Result<Res<Group_Member>, InternalError> {
-    return match inf.db_interface.insert::<Group_Member>(data).await {
+    return match inf.ps_interface.insert::<Group_Member>(data).await {
         Ok(grp_mem) => Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(grp_mem) }),
         Err(_e) => Err(InternalError::DbError),
     }
 }
 
 pub async fn add_message(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Message>) -> Result<Res<Message>, InternalError> {
-    return match inf.db_interface.insert::<Message>(data).await {
+    return match inf.ps_interface.insert::<Message>(data).await {
         Ok(msg) => Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(msg) }),
         Err(_e) => Err(InternalError::DbError),
     }
 }
 
-pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<ObjectIds>, InternalError> {
-    let match_err = move |status: StatusCode| -> InternalError {
+pub async fn create_invite(auth: AuthUser, inf: State<AppState>, Json(data): Json<PrivLevel>) -> Result<Res<InvJwt>, GenericErr> {
+    let user = inf.ps_interface.select::<Uuid, User>(Some((&["id"], &vec![auth.user_id])))
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    let usr = user.first().ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    if usr.prv != PrivilegeT::Proprietor {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
+    }
+    
+    let jwt_str = create_priv_jwt(data.prv_level, &inf.jwt_secret)
+    .await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
+
+    let res: Res<InvJwt> = Res {
+        status: StatusCode::CREATED,
+        success: true,
+        msg: String::new(),
+        data: Some(InvJwt { jwt: jwt_str }),
+    };
+
+    return Ok(res);
+}
+
+pub async fn upload(_auth: AuthUser, inf: State<AppState>, mut data: Multipart) -> Result<Res<ObjectIds>, InternalError> {
+    let match_err = |status: StatusCode, rm: Option<String>| -> InternalError {
+        if let Some(rm_path) = rm {
+            tokio::spawn(tokio::fs::remove_file(rm_path));
+        }
         return match status {
             StatusCode::BAD_REQUEST => InternalError::BadRequest,
             StatusCode::PAYLOAD_TOO_LARGE => InternalError::BodyTooLarge,
@@ -35,52 +73,56 @@ pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<Obj
         };
     };
 
+    let cleanup_err = |path: String, error: InternalError| -> InternalError {
+        tokio::spawn(tokio::fs::remove_file(path));
+        error
+    };
+
     let mut objs = ObjectIds {ids: vec![]};
 
     while let Some(mut field) = data
-    .next_field().await.map_err(|e| match_err(e.status()))? 
+    .next_field().await.map_err(|e| match_err(e.status(), None))? 
     {
         let uuid_name = uuid::Uuid::new_v4().to_string();
         let temp_path = TEMP_PTH_STR.to_string() + &uuid_name;
         let mut temp_file = tokio::fs::File::create_new(&temp_path)
-        .await.map_err(|_| InternalError::OperationsError)?;
+        .await.map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?;
 
         let mut hasher = Sha256::new();
 
         /* ===== LOAD TEMP FILE ===== */
         while let Some(chunk) = field
-        .chunk().await.map_err(|e| match_err(e.status()))? 
+        .chunk().await.map_err(|e| match_err(e.status(), Some(temp_path.clone())))? 
         {
             hasher.update(&chunk);
             temp_file.write_all(&chunk)
-            .await.map_err(|_| InternalError::OperationsError)?;
+            .await.map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?;
         }
 
-        temp_file.flush().await.map_err(|_| InternalError::OperationsError)?;
-        temp_file.sync_all().await.map_err(|_| InternalError::OperationsError)?;
+        temp_file.flush().await.map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?;
+        temp_file.sync_all().await.map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?;
 
         let hash = hex::encode(hasher.finalize());
 
-        let matches: Vec<Object> = inf.db_interface
+        let matches: Vec<Object> = inf.ps_interface
         .select::<&str, Object>(Some((&["hash"], &[&hash])))
-        .await.map_err(|_| InternalError::DbError)?;
+        .await.map_err(|_| cleanup_err(temp_path.clone(), InternalError::DbError))?;
 
-        /* ===== ERASE TEMP FILE ===== */
-        let mime = if let Some(ty) = infer::get(
+        /* ===== CONSUME TEMP FILE ===== */
+        let mime = if let Some(typ) = infer::get(
             &tokio::fs::read(&temp_path)
-            .await.map_err(|_| InternalError::OperationsError)?)
+            .await.map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?)
         {
-            ty
+            typ
         }
         else {
-            tokio::spawn(tokio::fs::remove_file(temp_path));
-            return Err(InternalError::UnknownType);
+            return Err(cleanup_err(temp_path.clone(), InternalError::UnknownType));
         };
         
         let mut size:i64 = 0;
         let new_obj_path = if let Some(frst) = matches.first() 
         {
-            tokio::fs::remove_file(temp_path).await.map_err(|_| InternalError::OperationsError)?;
+            tokio::spawn(tokio::fs::remove_file(temp_path.clone()));
             frst.rel_path.clone()
         }
         else {
@@ -91,13 +133,10 @@ pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<Obj
             let full_path = OBJ_PTH_STR.to_string() + &hash + "/" + &uuid_name;
 
             tokio::fs::create_dir_all(&dir_path)
-            .await.map_err(|_| InternalError::OperationsError)?;
+            .await.map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?;
 
             tokio::fs::rename(&temp_path, full_path)
-            .await.map_err(|_| {
-                tokio::spawn(tokio::fs::remove_file(temp_path));
-                InternalError::OperationsError
-            })?;
+            .await.map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?;
 
             hash.clone() + "/" + &uuid_name
         };
@@ -111,9 +150,7 @@ pub async fn upload(inf: State<AppState>, mut data: Multipart) -> Result<Res<Obj
             creation_timestamp: OffsetDateTime::now_utc().unix_timestamp() as i64
         };
 
-        
-
-        let obj = inf.db_interface.insert::<Object>(new_obj)
+        let obj = inf.ps_interface.insert::<Object>(new_obj)
         .await.map_err(|_| {
             if matches.first().is_none() {
                 tokio::spawn(tokio::fs::remove_file(OBJ_PTH_STR.to_string() + &new_obj_path));  

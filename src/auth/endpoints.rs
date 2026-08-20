@@ -4,8 +4,9 @@ use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+use crate::auth::extractor::AuthInvite;
 use crate::types::*;
-use crate::{auth::{creation::create_jwt}, errors::error_t::*};
+use crate::{auth::{creation::create_jwt}, responses::error_t::*};
 
 #[derive(Serialize, Deserialize)]
 pub struct UserTokenObj {
@@ -13,8 +14,32 @@ pub struct UserTokenObj {
     pub token_data: TokenPair,
 }
 
-pub async fn login(State(inf): State<AppState>, Json(data): Json<User>) -> Result<Res<UserTokenObj>, GenericErr> {
-    let rows: Vec<User> = inf.db_interface
+#[derive(Deserialize)]
+pub struct RefreshBody {
+    pub refresh_tkn: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TokenPair {
+    pub access_tkn: String,
+    pub refresh_tkn: String,
+}
+
+#[derive(Deserialize)]
+pub struct LoginCred {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Deserialize)]
+pub struct SignupCred {
+    pub nickname: String,
+    pub username: String,
+    pub password: String,
+}
+
+pub async fn login(State(inf): State<AppState>, Json(data): Json<LoginCred>) -> Result<Res<UserTokenObj>, GenericErr> {
+    let rows: Vec<User> = inf.ps_interface
     .select(Some((&vec!["username", "password"], &vec![&data.username, &data.password])))
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -51,13 +76,13 @@ pub async fn refresh(State(inf): State<AppState>, Json(data): Json<RefreshBody>)
     let tkn_data = decode::<Claims>(
         &data.refresh_tkn, 
         &DecodingKey::from_secret(&inf.jwt_secret), 
-        &Validation::default()).map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
+        &Validation::default()).map_err(|_| GenericErr::Auth(AuthError::InvalidToken))?;
     
     if tkn_data.claims.tkn_type != TokenType::Refresh {
         return Err(GenericErr::Auth(AuthError::WrongTokenType));
     }
 
-    let existence_key = format!("jwt:blacklist:{}", tkn_data.claims.jti);
+    let existence_key = format!("{BLACKLIST_STR}{}", tkn_data.claims.jti);
     let is_revoked: i64 = inf.redis_client.exists(existence_key)
     .await.map_err(|_| GenericErr::Internal(InternalError::RedisError))?;
 
@@ -70,8 +95,8 @@ pub async fn refresh(State(inf): State<AppState>, Json(data): Json<RefreshBody>)
     let refresh = create_jwt(tkn_data.claims.sub, TokenType::Refresh, &inf.jwt_secret)
     .await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
-    let set_key = format!("jwt:blacklist:{}", tkn_data.claims.jti);
-    let ttl = tkn_data.claims.exp as i64 - OffsetDateTime::now_utc().unix_timestamp();
+    let set_key = format!("{BLACKLIST_STR}{}", tkn_data.claims.jti);
+    let ttl = tkn_data.claims.exp as i64 - OffsetDateTime::now_utc().unix_timestamp() + 60;
 
     if ttl <= 0 {
         return Err(GenericErr::Auth(AuthError::InvalidToken));
@@ -86,22 +111,54 @@ pub async fn refresh(State(inf): State<AppState>, Json(data): Json<RefreshBody>)
     return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: Some(res) });
 }
 
-pub async fn sign_up(inf: State<AppState>, Json(data): Json<User>) -> Result<Res<UserTokenObj>, GenericErr> {
-    let usr = inf.db_interface.insert::<User>(data)
+pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<SignupCred>) -> Result<Res<UserTokenObj>, GenericErr> {
+    let key = format!("{INVITES_BLACKLIST_STR}{}", auth.claims.jti);
+    let ttl = auth.claims.exp as i64 - OffsetDateTime::now_utc().unix_timestamp() + 60;
+    let unset_blacklist = async |err: GenericErr| -> GenericErr {
+        return match inf.redis_client.del::<u8, &str>(&key).await {
+            Ok(_k) => err,
+            Err(_e) => GenericErr::Internal(InternalError::UncleanRedisError),
+        };
+    };
+
+    if ttl <= 0 {
+        return Err(GenericErr::Auth(AuthError::InvalidToken));
+    }
+
+    if data.nickname.trim().len() < 3 {
+        return Err(GenericErr::Auth(AuthError::InvalidNickname));
+    }
+
+    inf.redis_client
+    .set::<(), _, _>(&key, 1, Some(fred::types::Expiration::EX(ttl)), None, false)
+    .await.map_err(|_| GenericErr::Internal(InternalError::RedisError))?;
+
+    let usr = inf.ps_interface.insert::<User>(User { 
+        id: None, 
+        nickname: data.nickname, 
+        prv: auth.claims.priv_level, 
+        username: data.username, 
+        password: data.password, 
+        pfp: None })
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
     let id = if let Some(id_val) = usr.id {
         id_val
     }
     else {
-        return Err(GenericErr::Internal(InternalError::DbError));
+        return Err(unset_blacklist(GenericErr::Internal(InternalError::DbError)).await);
     };
 
-    let access = create_jwt(id, TokenType::Access, &inf.jwt_secret)
-    .await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
-    let refresh = create_jwt(id, TokenType::Refresh, &inf.jwt_secret)
-    .await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
-    
+    let access: String = match create_jwt(id, TokenType::Access, &inf.jwt_secret).await {
+        Ok(k) => k,
+        Err(_e) => {return Err(unset_blacklist(GenericErr::Internal(InternalError::DecodeEncodeErr)).await);},
+    };
+
+    let refresh: String = match create_jwt(id, TokenType::Refresh, &inf.jwt_secret).await {
+        Ok(k) => k,
+        Err(_e) => {return Err(unset_blacklist(GenericErr::Internal(InternalError::DecodeEncodeErr)).await);},
+    };
+
     let dta = UserTokenObj {
         user_data: usr,
         token_data: TokenPair { access_tkn: access, refresh_tkn: refresh }

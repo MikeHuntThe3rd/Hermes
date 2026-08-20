@@ -37,6 +37,8 @@ impl IntoResponse for AuthError {
             AuthError::MissingToken => (StatusCode::UNAUTHORIZED, "jwt token required but not found"),
             AuthError::WrongTokenType => (StatusCode::UNAUTHORIZED, "jwt type doesn't match the expected token type of the request"),
             AuthError::ExpiredToken => (StatusCode::UNAUTHORIZED, "given jwt is listed as expired"),
+            AuthError::InvalidPrivilige => (StatusCode::UNAUTHORIZED, "provided privilige level isnt high enough"),
+            AuthError::InvalidNickname => (StatusCode::UNAUTHORIZED, "provided username does not meet the required 3 character limit"),
         };
 
         let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 
@@ -50,6 +52,7 @@ impl IntoResponse for InternalError {
         let (code, msg) = match self {
             InternalError::DbError => (StatusCode::INTERNAL_SERVER_ERROR, "given data resulted in a faulty db request"),
             InternalError::RedisError => (StatusCode::INTERNAL_SERVER_ERROR, "redis service is down. try again"),
+            InternalError::UncleanRedisError => (StatusCode::INTERNAL_SERVER_ERROR, "redis service failed in an unsaved state"),
             InternalError::DecodeEncodeErr => (StatusCode::INTERNAL_SERVER_ERROR, "an error occured while encoding/decoding data"),
             InternalError::OperationsError => (StatusCode::INTERNAL_SERVER_ERROR, "internal operations in the server failed"),
             InternalError::NoMatches => (StatusCode::NOT_FOUND, "no row matched the given data"),

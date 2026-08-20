@@ -1,13 +1,18 @@
-use sqlx::{Encode, FromRow, Pool, Postgres, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}};
-use crate::types::*;
+use sqlx::{Encode, FromRow, Pool, Postgres, QueryBuilder, Sqlite, postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow}, query::{Query, QueryAs}, sqlite::{self, SqliteConnectOptions}};
+use crate::{logging::Logs, types::*};
 
 #[derive(Clone)]
-pub struct DbInterface {
+pub struct PsInterface {
     pool: Pool<Postgres>,
 }
 
-impl DbInterface {
-    pub async fn new() -> Result<DbInterface, sqlx::Error> {
+#[derive(Clone)]
+pub struct LiteInterface {
+    conn: Pool<Sqlite>,
+}
+
+impl PsInterface {
+    pub async fn new() -> Result<PsInterface, sqlx::Error> {
         let opt = PgConnectOptions::new()
         .socket("/run/postgresql")
         .username(&std::env::var("PS_USERNAME").expect("a PS_USERNAME enviroment variable is expected"))
@@ -17,22 +22,26 @@ impl DbInterface {
         .max_connections(10)
         .connect_with(opt.clone()).await?;
     
-        return Ok(DbInterface{ pool: conn_pool});
+        return Ok(PsInterface{ pool: conn_pool});
     }
 
     pub async fn insert<T>(&self, data: T) -> Result<T, sqlx::Error>
     where T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
-        let vals: Vec<String>= (1..=T::base_columns().len())
-        .map(|i| format!("${}", i))
-        .collect();
+        let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO ");
+        sql.push(T::table_name().to_string() + " (");
 
-        let sql = format!("INSERT INTO {} ({}) VALUES ({}) RETURNING *;"
-        , T::table_name()
-        , T::base_columns().join(", ")
-        , vals.join(", "));
+        let mut sepr = sql.separated(", ");
+        T::base_columns().iter().for_each(|col| {sepr.push(col);});
 
-        let query = data.bind_values(sqlx::query_as(&sql), BindVal::BASE);
+        sql.push(") VALUES ( ");
+
+        let mut sepr = sql.separated(", ");
+        (1..=T::base_columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+
+        sql.push(") RETURNING *;");
+
+        let query = data.bind_values(sql.build_query_as::<T>(), BindVal::BASE);
         let res = query.fetch_one(&self.pool).await?;
         Ok(res)
     }
@@ -40,21 +49,31 @@ impl DbInterface {
     pub async fn update<T>(&self, data: T) -> Result<T, sqlx::Error>
     where T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
-        let vals: Vec<String>= (1..=T::columns().len())
-        .map(|i| format!("${}", i))
-        .collect();
+        let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("UPDATE ");
+        sql.push(T::table_name())
+        .push(" SET (");
 
-        let id_vals = &vals[0..T::id_columns().len()];
-        let base_vals = &vals[(T::id_columns().len())..vals.iter().len()];
+        let mut sepr = sql.separated(", ");
+        T::base_columns().iter().for_each(|col| {sepr.push(col);});
 
-        let sql = format!("UPDATE {} SET ({}) = ({}) WHERE ({}) = ({}) RETURNING *;"
-        , T::table_name()
-        , T::base_columns().join(", ")
-        , base_vals.join(", ")
-        , T::id_columns().join(", ")
-        , id_vals.join(", "));
+        sql.push(") = (");
 
-        let query = data.bind_values(sqlx::query_as(&sql), BindVal::ALL);
+        let mut sepr = sql.separated(", ");
+        ((T::id_columns().len() + 1)..=T::columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+
+        sql.push(") WHERE (");
+
+        let mut sepr = sql.separated(", ");
+        T::id_columns().iter().for_each(|col| {sepr.push(col);});
+
+        sql.push(") = (");
+
+        let mut sepr = sql.separated(", ");
+        (1..=T::id_columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+
+        sql.push(") RETURNING *;");
+
+        let query = data.bind_values(sql.build_query_as::<T>(), BindVal::ALL);
         let res = query.fetch_one(&self.pool).await?;
         Ok(res)
     }
@@ -63,16 +82,22 @@ impl DbInterface {
     where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>
     , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
-        let vals: Vec<String>= (1..=T::id_columns().len())
-        .map(|i| format!("${}", i))
-        .collect();
 
-        let sql = format!("DELETE FROM {} WHERE ({}) = ({}) RETURNING *;"
-        ,T::table_name()
-        ,T::id_columns().join(", ")
-        ,vals.join(", "));
+        let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("DELETE FROM ");
+        sql.push(T::table_name())
+        .push(" WHERE (");
 
-        let mut query = sqlx::query_as(&sql);
+        let mut sepr = sql.separated(", ");
+        T::id_columns().iter().for_each(|col| {sepr.push(col);});
+
+        sql.push(") = (");
+        
+        let mut sepr = sql.separated(", ");
+        (1..=T::id_columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+
+        sql.push(") RETURNING *;");
+
+        let mut query = sql.build_query_as::<T>();
         for val in id_s {
             query = query.bind(val);
         }
@@ -84,38 +109,33 @@ impl DbInterface {
     where I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>
     , T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
-        let mut sql = format!("SELECT * FROM {}", T::table_name());
+        let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM ");
+        sql.push(T::table_name());
 
         if let Some(some_id_s) = id_s {
             if some_id_s.0.len() != some_id_s.1.len() {
                 return Err(sqlx::Error::InvalidArgument("given tuple arrays have different sizes".to_string()));
             }
 
-            let vals: Vec<String> = (1..=some_id_s.0.len())
-            .map(|i| format!("${}", i))
-            .collect();
+            sql.push(" WHERE (");
 
-            sql = format!("{} WHERE ({}) = ({});"
-            , sql
-            , some_id_s.0.join(", ")
-            , vals.join(", "));
+            let mut sepr = sql.separated(", ");
+            some_id_s.0.iter().for_each(|col| {sepr.push(col);});
+
+            sql.push(") = (");
+
+            let mut sepr = sql.separated(", ");
+            some_id_s.1.iter().for_each(|param| {sepr.push_bind(param);});
+
+            sql.push(");");
         }
         else {
-            sql += ";";
+            sql.push(";");
         }
 
-        let mut query: QueryAs<'_, Postgres, T, PgArguments> = sqlx::query_as(&sql);
-
-        if let Some(some_id_s) = id_s {
-            for val in some_id_s.1 {
-                query = query.bind(val);
-            }
-        }
-
-        let res = query.fetch_all(&self.pool).await?;
+        let res = sql.build_query_as::<T>().fetch_all(&self.pool).await?;
         Ok(res)
     }
-
 
     pub async fn generic_exec(&self, query: Query<'_, Postgres, PgArguments>) -> Result<(), sqlx::Error>
     {
@@ -130,4 +150,45 @@ impl DbInterface {
         Ok(res)
     }
 
+}
+
+impl LiteInterface {
+    pub async fn new() -> Result<LiteInterface, sqlx::Error> {
+        let initalizer_sql: &'static str = "CREATE TABLE IF NOT EXISTS logs(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request TEXT NOT NULL,
+            response TEXT NOT NULL,
+            err_msg TEXT
+        );";
+
+        let opt: SqliteConnectOptions = sqlite::SqliteConnectOptions::new().filename(LOGS_PTH_STR).journal_mode(sqlite::SqliteJournalMode::Wal);
+        let pool = sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(opt).await?;
+
+        sqlx::query(initalizer_sql).execute(&pool).await?;
+
+        return Ok(LiteInterface { conn: pool });
+    }
+
+    pub async fn insert<I, O>(&self, logs: Logs<I, O>) -> Result<(), sqlx::Error> 
+    where O: serde::Serialize,
+    I: serde::Serialize
+    {
+        let sql2: &'static str = "INSERT INTO logs (request, response) VALUES (json($1), json($2))";
+        let sql3: &'static str = "INSERT INTO logs (request, response, err_msg) VALUES (json($1), json($2), $3)";
+        
+        let (req, res) = (
+            serde_json::to_string(&logs.request).unwrap_or("json parsing failed here".to_string()),
+            serde_json::to_string(&logs.response).unwrap_or("json parsing failed here".to_string())
+        );
+
+        let query = if logs.err_msg.is_some() {
+            sqlx::query(sql3).bind(req).bind(res).bind(logs.err_msg)
+        } else {
+            sqlx::query(sql2).bind(req).bind(res)
+        };
+
+        query.execute(&self.conn).await?;
+
+        return Ok(());
+    }
 }

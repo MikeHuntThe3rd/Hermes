@@ -3,13 +3,17 @@ use derive_macros::Bindable;
 use fred::clients::Client;
 use serde::{Serialize, Deserialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
+use crate::logging::Logs;
 use crate::db::*;
 use uuid::Uuid;
 /* ===== CONSTS ===== */
 
 pub const TEMP_PTH_STR: &'static str = "/var/lib/hermes_objs/temp/";
 pub const OBJ_PTH_STR: &'static str = "/var/lib/hermes_objs/objs/";
-pub const OBJ_DIR_STR: &'static str = "/var/lib/hermes_objs/";
+pub const LOGS_PTH_STR: &'static str = "/var/lib/hermes_objs/logs/log.db";
+
+pub const BLACKLIST_STR: &'static str = "jwt:blacklist:";
+pub const INVITES_BLACKLIST_STR: &'static str = "jwt:blacklist:invites:";
 
 /* ===== TRAITS ===== */
 
@@ -26,6 +30,13 @@ pub trait Bindable {
         bind_val: BindVal)
         -> QueryAs<'lftm, Postgres, Self, PgArguments>
         where Self: Sized;
+}
+
+pub trait Logging<I, O> 
+where O: serde::Serialize,
+I: serde::Serialize
+{
+    fn log_if_err(self, logs: &mut Logs<I, O>) -> Self;
 }
 
 /* ===== ENUMS ===== */
@@ -48,7 +59,21 @@ pub enum TokenType {
 pub enum RelationT {
     Friends, 
     Pending, 
-    Blocked
+    Blocked,
+}
+#[derive(Debug, sqlx::Type, Serialize, Deserialize, Clone, PartialEq)]
+#[sqlx(type_name = "privilege_t")]
+pub enum PrivilegeT {
+    Proprietor, 
+    Consumer, 
+}
+
+#[derive(Debug, sqlx::Type, Serialize, Deserialize)]
+#[sqlx(type_name = "rank_t")]
+pub enum RankT {
+    Owner, 
+    Admin, 
+    User,
 }
 
 /* ===== STRUCTS ===== */
@@ -66,8 +91,18 @@ where T: Serialize
 #[ids = "id"]
 pub struct User {
     pub id: Option<Uuid>,
+    pub nickname: String,
+    pub prv: PrivilegeT,
     pub username: String,
     pub password: String,
+    pub pfp: Option<Uuid>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct StrippedUser {
+    pub id: Option<Uuid>,
+    pub nicname: String,
+    pub prv: PrivilegeT,
     pub pfp: Option<Uuid>,
 }
 
@@ -112,6 +147,7 @@ pub struct ObjectIds {
 pub struct Group_Member {
     pub group_id: Uuid,
     pub member_id: Uuid,
+    pub rank: RankT,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
@@ -127,10 +163,12 @@ pub struct Relation {
     related_user: Uuid,
     state: RelationT,
 }
+
 #[derive(Clone)]
 pub struct AppState {
     pub jwt_secret: Vec<u8>,
-    pub db_interface: DbInterface,
+    pub ps_interface: PsInterface,
+    pub lite_interface: LiteInterface,
     pub redis_client: Client,
 }
 
@@ -144,13 +182,10 @@ pub struct Claims {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct TokenPair {
-    pub access_tkn: String,
-    pub refresh_tkn: String,
-}
-
-#[derive(Deserialize)]
-pub struct RefreshBody {
-    pub refresh_tkn: String,
+pub struct PrivClaims {
+    pub priv_level: PrivilegeT,
+    pub jti: Uuid,
+    pub iat: usize,
+    pub exp: usize,
 }
 
