@@ -147,6 +147,7 @@ pub struct ObjectIds {
 pub struct Group_Member {
     pub group_id: Uuid,
     pub member_id: Uuid,
+    pub rank: RankT,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]

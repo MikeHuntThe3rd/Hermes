@@ -31,6 +31,7 @@ CREATE TABLE "groups" (
 CREATE TABLE "group_members" (
   "group_id" uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   "member_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "rank" rank_t NOT NULL,
   PRIMARY KEY (group_id, member_id)
 );
 
