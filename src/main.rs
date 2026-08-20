@@ -129,6 +129,7 @@ async fn main() {
     let interface: Router<()> = Router::new()
     .nest("/apiV1", api)
     .nest("/app", app)
+    .layer(cors)
     .fallback_service(ServeDir::new("res/welcome"));
 
 
