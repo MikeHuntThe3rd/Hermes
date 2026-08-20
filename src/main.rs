@@ -8,8 +8,9 @@ mod db;
 
 use std::{env, path, time::Duration};
 
-use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit};
+use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit, http::{HeaderValue, Method}};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::cors::CorsLayer;
 use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
 
 use crate::types::PrivilegeT;
@@ -117,6 +118,13 @@ async fn main() {
     .nest_service("/login_css", ServeFile::new("res/css/login.css"))
     .nest_service("/background", ServeFile::new("res/images/bg.png"))
     .nest_service("/profile", ServeFile::new("res/images/user.png"));
+
+    // CORS
+    let cors = CorsLayer::new()
+    .allow_origin("http://localhost:5500".parse::<HeaderValue>().unwrap())
+    .allow_credentials(true)
+    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+    .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]);
 
     let interface: Router<()> = Router::new()
     .nest("/apiV1", api)
