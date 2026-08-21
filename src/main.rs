@@ -110,28 +110,9 @@ async fn main() {
     .layer(CorsLayer::very_permissive())
     .with_state(state);
 
-    let app = Router::new()
-    .nest_service("/login", ServeDir::new("res/login"))
-    .nest_service("/sign_up", ServeDir::new("res/sign_up"))
-    .nest_service("/main", ServeDir::new("res/main"))
-    .nest_service("/main_css", ServeFile::new("res/css/main.css"))
-    .nest_service("/login_css", ServeFile::new("res/css/login.css"))
-    .nest_service("/background", ServeFile::new("res/images/bg.png"))
-    .nest_service("/profile", ServeFile::new("res/images/user.png"));
-
-    // CORS
-    let cors = CorsLayer::new()
-    .allow_origin("http://localhost:5500".parse::<HeaderValue>().unwrap())
-    .allow_credentials(true)
-    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
-    .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]);
-
     let interface: Router<()> = Router::new()
     .nest("/apiV1", api)
-    .nest("/app", app)
-    .layer(cors)
-    .fallback_service(ServeDir::new("res/welcome"));
-
+    .fallback_service(ServeDir::new("res"));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
     .await
