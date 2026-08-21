@@ -8,9 +8,8 @@ mod db;
 
 use std::{env, path, time::Duration};
 
-use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit, http::{HeaderValue, Method}};
-use tower_http::services::{ServeDir, ServeFile};
-use tower_http::cors::CorsLayer;
+use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit};
+use tower_http::{cors::{self, CorsLayer}, services::ServeDir};
 use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
 
 use crate::types::PrivilegeT;
@@ -108,6 +107,7 @@ async fn main() {
     /* ===== OBJECTS ===== */
     .route("/upload", post(upload)).layer(DefaultBodyLimit::max(10000000))
     .route("/pull/{object_id}", get(pull)).layer(DefaultBodyLimit::max(10000000))
+    .layer(CorsLayer::very_permissive())
     .with_state(state);
 
     let app = Router::new()
