@@ -8,6 +8,8 @@ pub enum AuthError {
     ExpiredToken,
     InvalidNickname,
     InvalidPrivilige,
+    SelfInvite,
+    OutsiderInvite,
 }
 
 pub enum InternalError {

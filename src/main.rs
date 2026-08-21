@@ -32,7 +32,14 @@ async fn ensure_master_user(state: AppState) {
     .await.expect("master user querying is expected to succeed");
 
     if user_s.len() < 1 {
-        inf.insert::<User>(User { id: None, nickname: "master".to_string(), prv: PrivilegeT::Proprietor, username: usr_nm, password: pswrd, pfp: None })
+        inf.insert::<User>(User { 
+            id: None, 
+            nickname: "master".to_string(), 
+            prv: PrivilegeT::Proprietor, 
+            username: usr_nm, 
+            password: pswrd, 
+            pfp: None 
+        }, false)
         .await.expect("master user inserting is expected to succeed");
     }
 }
@@ -87,7 +94,7 @@ async fn main() {
     .nest("/auth", auth)
     /* ===== POST ===== */
     .route("/add_group", post(add_group))
-    .route("/add_group_member", post(add_group_member))
+    .route("/add_group_member", post(invite_group_member))
     .route("/add_message", post(add_message))
     .route("/create_invite", post(create_invite))
     /* ===== GET ===== */

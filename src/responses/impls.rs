@@ -39,6 +39,8 @@ impl IntoResponse for AuthError {
             AuthError::ExpiredToken => (StatusCode::UNAUTHORIZED, "given jwt is listed as expired"),
             AuthError::InvalidPrivilige => (StatusCode::UNAUTHORIZED, "provided privilige level isnt high enough"),
             AuthError::InvalidNickname => (StatusCode::UNAUTHORIZED, "provided username does not meet the required 3 character limit"),
+            AuthError::SelfInvite => (StatusCode::UNAUTHORIZED, "you cannot invite yourself"),
+            AuthError::OutsiderInvite => (StatusCode::UNAUTHORIZED, "you cannot create an invite to a group you are not a part of"),
         };
 
         let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 

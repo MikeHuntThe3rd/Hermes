@@ -1,7 +1,7 @@
 
 CREATE TYPE relation_t AS ENUM ('Friends', 'Pending', 'Blocked');
-CREATE TYPE privilege_t AS ENUM ('Proprietor', 'Consumer');
-CREATE TYPE rank_t AS ENUM ('Owner', 'Admin', 'User');
+CREATE TYPE privilege_t AS ENUM ('Consumer', 'Proprietor');
+CREATE TYPE rank_t AS ENUM ('User', 'Admin', 'Owner');
 
 CREATE TABLE "users" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -20,12 +20,18 @@ CREATE TABLE "relations" (
   CONSTRAINT friend_equaltiy CHECK (relating_user != related_user)
 );
 
-
 CREATE TABLE "groups" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "name" text NOT NULL,
   "is_dm" bool NOT NULL,
   "gp" uuid
+);
+
+CREATE TABLE "group_invites" (
+  "id" uuid PRIMARY KEY,
+  "group_id" uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "rank" rank_t NOT NULL
 );
 
 CREATE TABLE "group_members" (

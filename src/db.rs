@@ -25,19 +25,24 @@ impl PsInterface {
         return Ok(PsInterface{ pool: conn_pool});
     }
 
-    pub async fn insert<T>(&self, data: T) -> Result<T, sqlx::Error>
+    pub async fn insert<T>(&self, data: T, insert_all: bool) -> Result<T, sqlx::Error>
     where T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
+        let cols = if insert_all {
+            T::columns()
+        } else {
+            T::base_columns()
+        };
         let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO ");
         sql.push(T::table_name().to_string() + " (");
 
         let mut sepr = sql.separated(", ");
-        T::base_columns().iter().for_each(|col| {sepr.push(col);});
+        cols.iter().for_each(|col| {sepr.push(col);});
 
         sql.push(") VALUES ( ");
 
         let mut sepr = sql.separated(", ");
-        (1..=T::base_columns().len()).for_each(|param| {sepr.push(format!("${param}"));});
+        (1..=cols.len()).for_each(|param| {sepr.push(format!("${param}"));});
 
         sql.push(") RETURNING *;");
 

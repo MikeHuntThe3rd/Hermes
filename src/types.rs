@@ -64,16 +64,16 @@ pub enum RelationT {
 #[derive(Debug, sqlx::Type, Serialize, Deserialize, Clone, PartialEq)]
 #[sqlx(type_name = "privilege_t")]
 pub enum PrivilegeT {
+    Consumer,
     Proprietor, 
-    Consumer, 
 }
 
-#[derive(Debug, sqlx::Type, Serialize, Deserialize)]
+#[derive(Debug, sqlx::Type, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[sqlx(type_name = "rank_t")]
 pub enum RankT {
-    Owner, 
-    Admin, 
     User,
+    Admin,
+    Owner, 
 }
 
 /* ===== STRUCTS ===== */
@@ -147,6 +147,15 @@ pub struct ObjectIds {
 pub struct Group_Member {
     pub group_id: Uuid,
     pub member_id: Uuid,
+    pub rank: RankT,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "id"]
+pub struct Group_Invite {
+    pub id: Uuid,
+    pub group_id: Uuid,
+    pub user_id: Uuid,
     pub rank: RankT,
 }
 

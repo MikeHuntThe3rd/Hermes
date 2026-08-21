@@ -139,7 +139,7 @@ pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<Si
         prv: auth.claims.priv_level, 
         username: data.username, 
         password: data.password, 
-        pfp: None })
+        pfp: None }, false)
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
     let id = if let Some(id_val) = usr.id {

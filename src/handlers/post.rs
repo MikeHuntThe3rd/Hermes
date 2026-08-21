@@ -17,25 +17,72 @@ pub struct PrivLevel {
     pub prv_level: PrivilegeT,
 }
 
-pub async fn add_group(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Group>) -> Result<Res<Group>, InternalError> {
-    return match inf.ps_interface.insert::<Group>(data).await {
-        Ok(grp) => Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(grp) }),
-        Err(_e) => Err(InternalError::DbError),
-    }
+#[derive(Serialize, Deserialize)]
+pub struct GrpInv {
+    pub group_id: Uuid,
+    pub user_id: Uuid,
+    pub rank: RankT,
 }
 
-pub async fn add_group_member(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Group_Member>) -> Result<Res<Group_Member>, InternalError> {
-    return match inf.ps_interface.insert::<Group_Member>(data).await {
-        Ok(grp_mem) => Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(grp_mem) }),
-        Err(_e) => Err(InternalError::DbError),
+pub async fn add_group(auth: AuthUser, inf: State<AppState>, Json(data): Json<Group>) -> Result<Res<Group>, InternalError> {
+    let group = inf.ps_interface.insert::<Group>(data, false)
+    .await.map_err(|_| InternalError::DbError)?;
+
+    if let Some(g_id) = group.id {
+        if inf.ps_interface.insert::<Group_Member>(Group_Member { 
+            group_id: g_id, 
+            member_id: auth.user_id, 
+            rank: RankT::Owner 
+        }, true)
+        .await.is_err() 
+        {
+            inf.ps_interface.delete::<Uuid, Group>(&[g_id]).await.map_err(|_| InternalError::DbError)?;
+            return Err(InternalError::DbError);
+        }
+
+        return Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(group) });
+    }
+    else {
+        return Err(InternalError::DbError);
     }
 }
 
 pub async fn add_message(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Message>) -> Result<Res<Message>, InternalError> {
-    return match inf.ps_interface.insert::<Message>(data).await {
+    return match inf.ps_interface.insert::<Message>(data, false).await {
         Ok(msg) => Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(msg) }),
         Err(_e) => Err(InternalError::DbError),
     }
+}
+
+pub async fn invite_group_member(auth: AuthUser, inf: State<AppState>, Json(data): Json<GrpInv>) -> Result<Res<()>, GenericErr> {
+    if auth.user_id == data.user_id {
+        return Err(GenericErr::Auth(AuthError::SelfInvite));
+    }
+
+    let member = inf.ps_interface.select::<Uuid, Group_Member>(Some((&["group_id", "member_id"], &[data.group_id, auth.user_id])))
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    let usr = inf.ps_interface.select::<Uuid, User>(Some((&["id"], &[data.user_id])))
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    if member.first().is_none() {
+        return Err(GenericErr::Auth(AuthError::OutsiderInvite));
+    }
+
+    if usr.first().is_none() {
+        return Err(GenericErr::Internal(InternalError::NoMatches));
+    }
+
+    let inv = Group_Invite {
+        id: Uuid::new_v4(),
+        group_id: data.group_id,
+        user_id: data.user_id,
+        rank: data.rank,
+    };
+
+    inf.ps_interface.insert(inv, true).await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    return Ok(Res { status: StatusCode::CREATED, success: true, msg: "invite created successfully".to_string(), data: None });
 }
 
 pub async fn create_invite(auth: AuthUser, inf: State<AppState>, Json(data): Json<PrivLevel>) -> Result<Res<InvJwt>, GenericErr> {
@@ -150,7 +197,7 @@ pub async fn upload(_auth: AuthUser, inf: State<AppState>, mut data: Multipart) 
             creation_timestamp: OffsetDateTime::now_utc().unix_timestamp() as i64
         };
 
-        let obj = inf.ps_interface.insert::<Object>(new_obj)
+        let obj = inf.ps_interface.insert::<Object>(new_obj, false)
         .await.map_err(|_| {
             if matches.first().is_none() {
                 tokio::spawn(tokio::fs::remove_file(OBJ_PTH_STR.to_string() + &new_obj_path));  
