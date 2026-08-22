@@ -94,12 +94,14 @@ async fn main() {
     .nest("/auth", auth)
     /* ===== POST ===== */
     .route("/add_group", post(add_group))
-    .route("/add_group_member", post(invite_group_member))
+    .route("/invite_group_member", post(invite_group_member))
+    .route("/manage_group_invite", post(manage_group_invite))
     .route("/add_message", post(add_message))
     .route("/create_invite", post(create_invite))
     /* ===== GET ===== */
     .route("/get_friends", get(get_friends))
     .route("/get_groups", get(get_groups))
+    .route("/get_invites", get(get_invites))
     .route("/get_group_members/{group_id}", get(get_group_members))
     .route("/get_messages/{group_id}", get(get_messages))
     /* ===== DELETE ===== */

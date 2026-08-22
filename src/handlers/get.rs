@@ -112,6 +112,14 @@ pub async fn get_messages(_auth: AuthUser, State(inf): State<AppState>, Path(gro
     );
 }
 
+pub async fn get_invites(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<Group_Invite>>, InternalError> {
+    let invs = inf.ps_interface.select::<Uuid, Group_Invite>(Some((&["user_id"], &[auth.user_id]))).await.map_err(|_| InternalError::DbError)?;
+    if invs.first().is_none() {
+        return Err(InternalError::NoMatches);
+    }
+    return Ok(Res { status: StatusCode::FOUND, success: true, msg: String::new(), data: Some(invs) });
+}
+
 pub async fn pull(_auth: AuthUser, State(inf): State<AppState>, Path(object_id): Path<Uuid>) -> Result<impl IntoResponse, InternalError> {
     let obj: Object = 
     inf.ps_interface

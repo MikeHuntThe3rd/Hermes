@@ -24,6 +24,12 @@ pub struct GrpInv {
     pub rank: RankT,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct InvMng {
+    pub group_invite: Group_Invite,
+    pub accept: bool,
+}
+
 pub async fn add_group(auth: AuthUser, inf: State<AppState>, Json(data): Json<Group>) -> Result<Res<Group>, InternalError> {
     let group = inf.ps_interface.insert::<Group>(data, false)
     .await.map_err(|_| InternalError::DbError)?;
@@ -83,6 +89,26 @@ pub async fn invite_group_member(auth: AuthUser, inf: State<AppState>, Json(data
     inf.ps_interface.insert(inv, true).await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
     return Ok(Res { status: StatusCode::CREATED, success: true, msg: "invite created successfully".to_string(), data: None });
+}
+
+pub async fn manage_group_invite(auth: AuthUser, inf: State<AppState>, Json(data): Json<InvMng>) -> Result<Res<()>, InternalError> {
+    let grp_inv  = data.group_invite;
+    let invs: Vec<Group_Invite> = inf.ps_interface.select(Some((&["id"], &[grp_inv.id]))).await.map_err(|_| InternalError::DbError)?;
+    
+    match invs.first() {
+        Some(inv) => {if inv.user_id != auth.user_id {
+            return Err(InternalError::NoMatches);
+        }},
+        None => {return Err(InternalError::NoMatches);},
+    }
+
+    if data.accept {
+        inf.ps_interface.insert::<Group_Member>(Group_Member { group_id: grp_inv.group_id, member_id: grp_inv.user_id, rank: grp_inv.rank }, true).await.map_err(|_| InternalError::DbError)?;
+    }
+
+    inf.ps_interface.delete::<Uuid, Group_Invite>(&[grp_inv.id]).await.map_err(|_| InternalError::DbError)?;
+
+    return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
 }
 
 pub async fn create_invite(auth: AuthUser, inf: State<AppState>, Json(data): Json<PrivLevel>) -> Result<Res<InvJwt>, GenericErr> {

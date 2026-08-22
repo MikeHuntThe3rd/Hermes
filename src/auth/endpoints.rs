@@ -114,12 +114,6 @@ pub async fn refresh(State(inf): State<AppState>, Json(data): Json<RefreshBody>)
 pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<SignupCred>) -> Result<Res<UserTokenObj>, GenericErr> {
     let key = format!("{INVITES_BLACKLIST_STR}{}", auth.claims.jti);
     let ttl = auth.claims.exp as i64 - OffsetDateTime::now_utc().unix_timestamp() + 60;
-    let unset_blacklist = async |err: GenericErr| -> GenericErr {
-        return match inf.redis_client.del::<u8, &str>(&key).await {
-            Ok(_k) => err,
-            Err(_e) => GenericErr::Internal(InternalError::UncleanRedisError),
-        };
-    };
 
     if ttl <= 0 {
         return Err(GenericErr::Auth(AuthError::InvalidToken));
@@ -146,23 +140,19 @@ pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<Si
         id_val
     }
     else {
-        return Err(unset_blacklist(GenericErr::Internal(InternalError::DbError)).await);
+        return Err(GenericErr::Internal(InternalError::NoMatches));
     };
 
-    let access: String = match create_jwt(id, TokenType::Access, &inf.jwt_secret).await {
-        Ok(k) => k,
-        Err(_e) => {return Err(unset_blacklist(GenericErr::Internal(InternalError::DecodeEncodeErr)).await);},
-    };
+    let access: String = create_jwt(id, TokenType::Access, &inf.jwt_secret).await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
-    let refresh: String = match create_jwt(id, TokenType::Refresh, &inf.jwt_secret).await {
-        Ok(k) => k,
-        Err(_e) => {return Err(unset_blacklist(GenericErr::Internal(InternalError::DecodeEncodeErr)).await);},
-    };
+    let refresh: String = create_jwt(id, TokenType::Refresh, &inf.jwt_secret).await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
     let dta = UserTokenObj {
         user_data: usr,
         token_data: TokenPair { access_tkn: access, refresh_tkn: refresh }
     };
+
+    inf.redis_client.del::<u8, &str>(&key).await.map_err(|_| GenericErr::Internal(InternalError::RedisError))?;
 
     Ok(
         Res{ 
