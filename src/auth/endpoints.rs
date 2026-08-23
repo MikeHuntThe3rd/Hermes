@@ -48,9 +48,9 @@ pub async fn login(State(inf): State<AppState>, Json(data): Json<LoginCred>) -> 
     frst.username == data.username && 
     frst.password == data.password
     {
-        let access = create_jwt(frst.id.expect("uuid has to be set in the id field"), TokenType::Access, &inf.jwt_secret)
+        let access = create_jwt(frst.id, TokenType::Access, &inf.jwt_secret)
         .await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
-        let refresh = create_jwt(frst.id.expect("uuid has to be set in the id field"), TokenType::Refresh, &inf.jwt_secret)
+        let refresh = create_jwt(frst.id, TokenType::Refresh, &inf.jwt_secret)
         .await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
         let dta = UserTokenObj {
@@ -128,7 +128,7 @@ pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<Si
     .await.map_err(|_| GenericErr::Internal(InternalError::RedisError))?;
 
     let usr = inf.ps_interface.insert::<User>(User { 
-        id: None, 
+        id: PLACE_HOLDER_UUID, 
         nickname: data.nickname, 
         prv: auth.claims.priv_level, 
         username: data.username, 
@@ -136,16 +136,9 @@ pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<Si
         pfp: None }, false)
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    let id = if let Some(id_val) = usr.id {
-        id_val
-    }
-    else {
-        return Err(GenericErr::Internal(InternalError::NoMatches));
-    };
+    let access: String = create_jwt(usr.id, TokenType::Access, &inf.jwt_secret).await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
-    let access: String = create_jwt(id, TokenType::Access, &inf.jwt_secret).await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
-
-    let refresh: String = create_jwt(id, TokenType::Refresh, &inf.jwt_secret).await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
+    let refresh: String = create_jwt(usr.id, TokenType::Refresh, &inf.jwt_secret).await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
     let dta = UserTokenObj {
         user_data: usr,

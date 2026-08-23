@@ -15,13 +15,13 @@ pub enum AuthError {
 pub enum InternalError {
     DbError,
     RedisError,
-    UncleanRedisError,
     DecodeEncodeErr,
     OperationsError,
     NoMatches,
     BadRequest,
     BodyTooLarge,
     UnknownType,
+    EmptyMessage,
 }
 
 pub enum GenericErr {

@@ -54,13 +54,13 @@ impl IntoResponse for InternalError {
         let (code, msg) = match self {
             InternalError::DbError => (StatusCode::INTERNAL_SERVER_ERROR, "given data resulted in a faulty db request"),
             InternalError::RedisError => (StatusCode::INTERNAL_SERVER_ERROR, "redis service is down. try again"),
-            InternalError::UncleanRedisError => (StatusCode::INTERNAL_SERVER_ERROR, "redis service failed in an unsaved state"),
             InternalError::DecodeEncodeErr => (StatusCode::INTERNAL_SERVER_ERROR, "an error occured while encoding/decoding data"),
             InternalError::OperationsError => (StatusCode::INTERNAL_SERVER_ERROR, "internal operations in the server failed"),
             InternalError::NoMatches => (StatusCode::NOT_FOUND, "no row matched the given data"),
             InternalError::BadRequest => (StatusCode::BAD_REQUEST, "the request body was incorrectly formatted"),
             InternalError::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "the request body exceeded the maximum size allowed"),
             InternalError::UnknownType => (StatusCode::NOT_FOUND, "type of the file could not be infered"),
+            InternalError::EmptyMessage => (StatusCode::NOT_FOUND, "cant send a message without content"),
         };
 
         let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 

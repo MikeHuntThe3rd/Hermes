@@ -11,6 +11,7 @@ use std::{env, path, time::Duration};
 use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit};
 use tower_http::{cors::{self, CorsLayer}, services::ServeDir};
 use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
+use uuid::Uuid;
 
 use crate::types::PrivilegeT;
 use db::PsInterface;
@@ -33,7 +34,7 @@ async fn ensure_master_user(state: AppState) {
 
     if user_s.len() < 1 {
         inf.insert::<User>(User { 
-            id: None, 
+            id: Uuid::new_v4(), 
             nickname: "master".to_string(), 
             prv: PrivilegeT::Proprietor, 
             username: usr_nm, 

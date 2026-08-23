@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
 use crate::logging::Logs;
 use crate::db::*;
-use uuid::Uuid;
+use uuid::{Uuid, uuid};
 /* ===== CONSTS ===== */
 
 pub const TEMP_PTH_STR: &'static str = "/var/lib/hermes_objs/temp/";
@@ -14,6 +14,8 @@ pub const LOGS_PTH_STR: &'static str = "/var/lib/hermes_objs/logs/log.db";
 
 pub const BLACKLIST_STR: &'static str = "jwt:blacklist:";
 pub const INVITES_BLACKLIST_STR: &'static str = "jwt:blacklist:invites:";
+
+pub const PLACE_HOLDER_UUID: Uuid = Uuid::nil();
 
 /* ===== TRAITS ===== */
 
@@ -90,7 +92,7 @@ where T: Serialize
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable, Clone)]
 #[ids = "id"]
 pub struct User {
-    pub id: Option<Uuid>,
+    pub id: Uuid,
     pub nickname: String,
     pub prv: PrivilegeT,
     pub username: String,
@@ -100,7 +102,7 @@ pub struct User {
 
 #[derive(Serialize, Deserialize)]
 pub struct StrippedUser {
-    pub id: Option<Uuid>,
+    pub id: Uuid,
     pub nicname: String,
     pub prv: PrivilegeT,
     pub pfp: Option<Uuid>,
@@ -109,7 +111,7 @@ pub struct StrippedUser {
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "id"]
 pub struct Group {
-    pub id: Option<Uuid>,
+    pub id: Uuid,
     pub name: String,
     pub is_dm: bool,
     pub gp: Option<Uuid>,
@@ -118,9 +120,8 @@ pub struct Group {
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "id"]
 pub struct Message {
-    pub id: Option<i32>,
+    pub id: i32,
     pub message: Option<String>,
-    pub files: Option<Vec<Vec<u8>>>,
     pub group_id: Uuid,
     pub user_id: Uuid,
 }
@@ -128,17 +129,12 @@ pub struct Message {
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "id"]
 pub struct Object {
-  pub id: Option<Uuid>,
+  pub id: Uuid,
   pub hash : String,
   pub rel_path: String,
   pub mime_type: String,
   pub size_bytes: i64,
   pub creation_timestamp: i64,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ObjectIds {
-    pub ids: Vec<Uuid>,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]

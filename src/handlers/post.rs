@@ -12,6 +12,11 @@ pub struct InvJwt {
     pub jwt: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct ObjectIds {
+    pub ids: Vec<Uuid>,
+}
+
 #[derive(Deserialize)]
 pub struct PrivLevel {
     pub prv_level: PrivilegeT,
@@ -30,34 +35,59 @@ pub struct InvMng {
     pub accept: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct Msg {
+    pub file_ids: Vec<Uuid>,
+    pub message: Option<String>,
+    pub group_id: Uuid,
+}
+
 pub async fn add_group(auth: AuthUser, inf: State<AppState>, Json(data): Json<Group>) -> Result<Res<Group>, InternalError> {
     let group = inf.ps_interface.insert::<Group>(data, false)
     .await.map_err(|_| InternalError::DbError)?;
 
-    if let Some(g_id) = group.id {
-        if inf.ps_interface.insert::<Group_Member>(Group_Member { 
-            group_id: g_id, 
-            member_id: auth.user_id, 
-            rank: RankT::Owner 
-        }, true)
-        .await.is_err() 
-        {
-            inf.ps_interface.delete::<Uuid, Group>(&[g_id]).await.map_err(|_| InternalError::DbError)?;
-            return Err(InternalError::DbError);
-        }
+    let member = inf.ps_interface.insert::<Group_Member>(Group_Member { 
+        group_id: group.id, 
+        member_id: auth.user_id, 
+        rank: RankT::Owner 
+    }, true).await;
 
-        return Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(group) });
-    }
-    else {
+    if member.is_err() {
+        inf.ps_interface.delete::<Uuid, Group>(&[group.id]).await.map_err(|_| InternalError::DbError)?;
         return Err(InternalError::DbError);
     }
+
+    return Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(group) });
 }
 
-pub async fn add_message(_auth: AuthUser, inf: State<AppState>, Json(data): Json<Message>) -> Result<Res<Message>, InternalError> {
-    return match inf.ps_interface.insert::<Message>(data, false).await {
-        Ok(msg) => Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(msg) }),
-        Err(_e) => Err(InternalError::DbError),
+//TODO: SAFEGURAD FOR DB FALIURES AFTER BASE MESSAGE INSERT
+pub async fn add_message(auth: AuthUser, inf: State<AppState>, Json(data): Json<Msg>) -> Result<Res<()>, GenericErr> {
+    if data.file_ids.len() == 0 && data.message.is_none() {
+        return Err(GenericErr::Internal(InternalError::EmptyMessage));
     }
+
+    let grp_member: Vec<Group_Member> = inf.ps_interface.select(Some((&["group_id", "member_id"], &[data.group_id, auth.user_id])))
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    let grp = grp_member.first().ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    if grp.rank < RankT::Admin {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
+    }
+
+    let msg: Message = inf.ps_interface.insert(Message { 
+        id: 0, 
+        message: data.message, 
+        group_id: data.group_id, 
+        user_id: auth.user_id 
+    }, false)
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    for file_id in data.file_ids {
+        inf.ps_interface.insert(Message_Object {message_id: msg.id, object_id: file_id}, true).await.unwrap();
+    }
+
+    Err(GenericErr::Auth(AuthError::ExpiredToken))
 }
 
 pub async fn invite_group_member(auth: AuthUser, inf: State<AppState>, Json(data): Json<GrpInv>) -> Result<Res<()>, GenericErr> {
@@ -71,8 +101,10 @@ pub async fn invite_group_member(auth: AuthUser, inf: State<AppState>, Json(data
     let usr = inf.ps_interface.select::<Uuid, User>(Some((&["id"], &[data.user_id])))
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    if member.first().is_none() {
-        return Err(GenericErr::Auth(AuthError::OutsiderInvite));
+    let mbr = member.first().ok_or(GenericErr::Auth(AuthError::OutsiderInvite))?;
+
+    if mbr.rank < data.rank {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
     if usr.first().is_none() {
@@ -80,7 +112,7 @@ pub async fn invite_group_member(auth: AuthUser, inf: State<AppState>, Json(data
     }
 
     let inv = Group_Invite {
-        id: Uuid::new_v4(),
+        id: PLACE_HOLDER_UUID,
         group_id: data.group_id,
         user_id: data.user_id,
         rank: data.rank,
@@ -215,7 +247,7 @@ pub async fn upload(_auth: AuthUser, inf: State<AppState>, mut data: Multipart) 
         };
 
         let new_obj = Object {
-            id: None,
+            id: PLACE_HOLDER_UUID,
             hash: hash,
             rel_path: new_obj_path.clone(),
             mime_type: mime.to_string(),
@@ -230,10 +262,8 @@ pub async fn upload(_auth: AuthUser, inf: State<AppState>, mut data: Multipart) 
             }
             InternalError::DbError
         })?;
-        
-        if let Some(tmp_id) = obj.id {
-            objs.ids.push(tmp_id);
-        }
+
+        objs.ids.push(obj.id);
     }
 
     return Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(objs) });
