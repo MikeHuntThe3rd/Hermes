@@ -9,7 +9,7 @@ mod db;
 use std::{env, path, time::Duration};
 
 use axum::{Router, routing::{delete, get, patch, post}, extract::DefaultBodyLimit};
-use tower_http::{cors::{self, CorsLayer}, services::ServeDir};
+use tower_http::{cors::CorsLayer, services::ServeDir};
 use fred::{interfaces::{ClientLike, EventInterface}, types::{Builder, config::{Config, TcpConfig}}};
 use uuid::Uuid;
 
@@ -23,6 +23,8 @@ use handlers::{post::*
     ,patch::*};
 
 use crate::{db::LiteInterface, types::User};
+
+async fn place_holder_fn(){}
 
 async fn ensure_master_user(state: AppState) {
     let inf = state.ps_interface;
@@ -90,33 +92,51 @@ async fn main() {
     .route("/login", post(login))
     .route("/refresh", post(refresh))
     .route("/sign_up", post(sign_up));
-    
-    let api = Router::new()
-    .nest("/auth", auth)
-    /* ===== POST ===== */
-    .route("/add_group", post(add_group))
-    .route("/invite_group_member", post(invite_group_member))
-    .route("/manage_group_invite", post(manage_group_invite))
-    .route("/add_message", post(add_message))
-    .route("/create_invite", post(create_invite))
-    /* ===== GET ===== */
-    .route("/get_friends", get(get_friends))
-    .route("/get_groups", get(get_groups))
-    .route("/get_invites", get(get_invites))
-    .route("/get_group_members/{group_id}", get(get_group_members))
-    .route("/get_messages/{group_id}", get(get_messages))
-    /* ===== DELETE ===== */
-    .route("/delete_self", delete(delete_self))
-    .route("/delete_group/{group_id}", delete(delete_group))
-    .route("/delete_group_member/{group_member_id}", delete(delete_group_member))
-    .route("/delete_message/{message_id}", delete(delete_message))
-    /* ===== PATCH ===== */
-    .route("/update_user", patch(update_user))
-    .route("/update_group", patch(update_group))
-    .route("/update_message", patch(update_message))
-    /* ===== OBJECTS ===== */
+
+    let groups: Router<AppState> = Router::new()
+    /* ===== Groups ===== */
+    .route("/", post(add_group))
+    .route("/all", get(get_groups))
+    .route("/invites", get(get_invites))
+    .route("/{group_id}/members", get(get_group_members))
+    .route("/{group_id}", delete(delete_group))
+    .route("/{group_id}", patch(update_group))
+    .route("/{group_member_id}/member/{member_id}", delete(delete_group_member))
+    .route("/{group_id}/invite", post(invite_group_member))
+    .route("/invite/{invite_id}", patch(manage_group_invite))
+    .route("/{group_id}/message", post(add_message))
+    .route("/{group_id}/message/all", get(get_messages))
+    .route("/{group_id}/message/{message_id}", patch(update_message))
+    .route("/{group_id}/message/{message_id}", delete(delete_message));
+
+    let relations: Router<AppState> = Router::new()
+    .route("/friends", get(get_friends))
+    .route("/invites", get(place_holder_fn))
+    .route("/{user_id}", patch(place_holder_fn))
+    .route("/{user_id}", delete(place_holder_fn));
+
+    let users: Router<AppState> = Router::new()
+    .route("/me", delete(delete_self))
+    .route("/me", patch(update_user));
+
+    let objects: Router<AppState> = Router::new()
     .route("/upload", post(upload)).layer(DefaultBodyLimit::max(10000000))
-    .route("/pull/{object_id}", get(pull)).layer(DefaultBodyLimit::max(10000000))
+    .route("/pull/{object_id}", get(pull)).layer(DefaultBodyLimit::max(10000000));
+
+    let api = Router::new()
+    /* ===== Invites ===== */
+    .route("invite/new_user/{prv_level}", post(create_invite))
+    /* ===== Auth ===== */
+    .nest("/auth", auth)
+    /* ===== Groups ===== */
+    .nest("/group", groups)
+    /* ===== Relations ===== */
+    .nest("/relation", relations)
+    /* ===== Users ===== */
+    .nest("/user", users)
+    /* ===== Objects ===== */
+    .nest("/object", objects)
+    /* ===== Generics ===== */
     .layer(CorsLayer::very_permissive())
     .with_state(state);
 

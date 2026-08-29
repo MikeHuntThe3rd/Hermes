@@ -62,7 +62,7 @@ pub async fn add_group(auth: AuthUser, inf: State<AppState>, Json(data): Json<Gr
 
 //TODO: SAFEGURAD FOR DB FALIURES AFTER BASE MESSAGE INSERT
 pub async fn add_message(auth: AuthUser, inf: State<AppState>, Json(data): Json<Msg>) -> Result<Res<()>, GenericErr> {
-    if data.file_ids.len() == 0 && data.message.is_none() {
+    if data.file_ids.first().is_none() && data.message.is_none() {
         return Err(GenericErr::Internal(InternalError::EmptyMessage));
     }
 

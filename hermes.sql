@@ -17,7 +17,7 @@ CREATE TABLE "relations" (
   "related_user" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   "state" relation_t NOT NULL,
   PRIMARY KEY (relating_user, related_user),
-  CONSTRAINT friend_equaltiy CHECK (relating_user != related_user)
+  CONSTRAINT friend_equality CHECK (relating_user != related_user)
 );
 
 CREATE TABLE "groups" (
@@ -28,7 +28,7 @@ CREATE TABLE "groups" (
 );
 
 CREATE TABLE "group_invites" (
-  "id" uuid PRIMARY KEY,
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "group_id" uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   "rank" rank_t NOT NULL
