@@ -149,7 +149,7 @@ impl PsInterface {
     }
 
     pub async fn generic_fetch<T>(&self, query: QueryAs<'_, Postgres, T, PgArguments>) -> Result<Vec<T>, sqlx::Error>
-    where T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin
+    where T: for<'r> FromRow<'r, PgRow> + Send + Unpin
     {
         let res = query.fetch_all(&self.pool).await?;
         Ok(res)

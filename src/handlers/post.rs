@@ -42,8 +42,20 @@ pub struct Msg {
     pub group_id: Uuid,
 }
 
-pub async fn add_group(auth: AuthUser, inf: State<AppState>, Json(data): Json<Group>) -> Result<Res<Group>, InternalError> {
-    let group = inf.ps_interface.insert::<Group>(data, false)
+#[derive(Serialize, Deserialize)]
+pub struct Grp {
+    pub name: String,
+    pub is_dm: bool,
+    pub gp: Option<Uuid>,
+}
+
+pub async fn add_group(auth: AuthUser, inf: State<AppState>, Json(data): Json<Grp>) -> Result<Res<()>, InternalError> {
+    let group = inf.ps_interface.insert::<Group>(Group {
+        id: PLACE_HOLDER_UUID, 
+        name: data.name, 
+        is_dm: data.is_dm, 
+        gp: data.gp 
+    }, false)
     .await.map_err(|_| InternalError::DbError)?;
 
     let member = inf.ps_interface.insert::<Group_Member>(Group_Member { 
@@ -57,7 +69,7 @@ pub async fn add_group(auth: AuthUser, inf: State<AppState>, Json(data): Json<Gr
         return Err(InternalError::DbError);
     }
 
-    return Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: Some(group) });
+    return Ok(Res { status: StatusCode::CREATED, success: true, msg: String::new(), data: None });
 }
 
 //TODO: SAFEGURAD FOR DB FALIURES AFTER BASE MESSAGE INSERT

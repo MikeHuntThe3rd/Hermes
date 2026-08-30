@@ -100,14 +100,6 @@ pub struct User {
     pub pfp: Option<Uuid>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct StrippedUser {
-    pub id: Uuid,
-    pub nicname: String,
-    pub prv: PrivilegeT,
-    pub pfp: Option<Uuid>,
-}
-
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "id"]
 pub struct Group {

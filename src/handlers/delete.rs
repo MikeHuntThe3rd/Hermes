@@ -2,7 +2,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use uuid::Uuid;
 
-use crate::responses::error_t::InternalError;
+use crate::handlers::fetch_group_member;
+use crate::responses::error_t::{GenericErr, InternalError, AuthError};
 use crate::{auth::extractor::AuthUser, types::*};
 
 pub async fn delete_self(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<()>, InternalError> {
@@ -17,27 +18,43 @@ pub async fn delete_self(auth: AuthUser, State(inf): State<AppState>) -> Result<
     }
 }
 
-pub async fn delete_group(_auth: AuthUser, State(inf): State<AppState>, Path(group_id): Path<Uuid>) -> Result<Res<()>, InternalError> {
+pub async fn delete_group(auth: AuthUser, State(inf): State<AppState>, Path(group_id): Path<Uuid>) -> Result<Res<()>, GenericErr> {
+    let rank: Group_Member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    .await.map_err(|e| GenericErr::Internal(e))?;
+
+    if rank.rank != RankT::Owner {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
+    }
+
     let deletes = inf.ps_interface.delete::<Uuid, Group>(&vec![group_id])
-    .await.map_err(|_| InternalError::DbError)?;
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
     
     if deletes.len() >= 1 {
         return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
     }
     else {
-        return Err(InternalError::NoMatches);
+        return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 }
 
-pub async fn delete_group_member(_auth: AuthUser, State(inf): State<AppState>, Path(group_member_id): Path<Uuid>) -> Result<Res<()>, InternalError> {
-    let deletes = inf.ps_interface.delete::<Uuid, Group_Member>(&vec![group_member_id])
-    .await.map_err(|_| InternalError::DbError)?;
+pub async fn delete_group_member(auth: AuthUser, State(inf): State<AppState>, Path(group_id): Path<Uuid>, Path(member_id): Path<Uuid>) -> Result<Res<()>, GenericErr> {
+    let caller = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    .await.map_err(|e|GenericErr::Internal(e))?;
+    let recipient = fetch_group_member(inf.clone(), &group_id, &member_id)
+    .await.map_err(|e|GenericErr::Internal(e))?;
+
+    if recipient.rank >= caller.rank {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
+    }
+
+    let deletes: Vec<Group_Member> = inf.ps_interface.delete(&vec![group_id, member_id])
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
     
-    if deletes.len() >= 1 {
+    if deletes.first().is_some() {
         return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
     }
     else {
-        return Err(InternalError::NoMatches);
+        return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 }
 

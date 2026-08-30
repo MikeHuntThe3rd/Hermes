@@ -101,7 +101,7 @@ async fn main() {
     .route("/{group_id}/members", get(get_group_members))
     .route("/{group_id}", delete(delete_group))
     .route("/{group_id}", patch(update_group))
-    .route("/{group_member_id}/member/{member_id}", delete(delete_group_member))
+    .route("/{group_id}/member/{member_id}", delete(delete_group_member))
     .route("/{group_id}/invite", post(invite_group_member))
     .route("/invite/{invite_id}", patch(manage_group_invite))
     .route("/{group_id}/message", post(add_message))
