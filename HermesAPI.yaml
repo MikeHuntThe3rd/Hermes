@@ -1,0 +1,1149 @@
+openapi: 3.0.3
+info:
+  title: Hermes API
+  description: >
+    API for authentication, groups, group invites, messaging, and object
+    (file) storage.
+  version: 1.0.0
+
+servers:
+  - url: http://127.0.0.1:8000/apiV1
+    description: Local development server
+
+tags:
+  - name: Auth
+  - name: Groups
+  - name: Invites
+  - name: Messages
+  - name: Relations
+  - name: Users
+  - name: Objects
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ===================== AUTH =====================
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginCred'
+      responses:
+        '200':
+          description: >
+            Authenticated successfully. Returns the User record plus a
+            fresh access/refresh token pair.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTokenObjResponse'
+        '401':
+          description: No matching username/password (InvalidCredentials)
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: >
+        Exchange a refresh token for a new access/refresh token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshBody'
+      responses:
+        '200':
+          description: New token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+        '401':
+          description: >
+            Token failed to decode/verify (InvalidToken), was not a
+            Refresh-type token (WrongTokenType), was already blacklisted
+            (ExpiredToken), or had less than 60s of life left at check time
+            (InvalidToken).
+        '500':
+          description: Redis error, or JWT encode error creating the new pair
+
+  /auth/sign_up:
+    post:
+      tags: [Auth]
+      summary: Create a new user account
+      security:
+        - inviteBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupCred'
+      responses:
+        '201':
+          description: >
+            Account created. Returns the new User record plus a fresh
+            access/refresh token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTokenObjResponse'
+        '400':
+          description: nickname was shorter than 3 characters after trimming (InvalidNickname)
+        '401':
+          description: Invite JWT missing/invalid, or expired (< 60s remaining) (InvalidToken)
+        '500':
+          description: Db error, Redis error, or JWT encode error
+
+  # ===================== POST =====================
+  /group:
+    post:
+      tags: [Groups]
+      summary: Create a new group
+      description: caller is added as Owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StrippedGroup'
+      responses:
+        '201':
+          description: Group created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /group/{group_id}/invite:
+    post:
+      tags: [Invites]
+      summary: Invite a user to a group
+      description: Caller must already be a member with rank equal or greater than the rank being granted; self-invites are rejected
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              $ref: '#/components/schemas/GrpInv'
+      responses:
+        '201':
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '400':
+          description: Caller attempted to invite themselves (SelfInvite)
+        '403':
+          description: Caller is not a member of the group, or lacks sufficient rank
+        '404':
+          description: Target user not found
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /group/invite/{invite_id}:
+    patch:
+      tags: [Invites]
+      summary: Accept or decline a pending group invite addressed to the caller
+      parameters: 
+        - name: invite_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvMng'
+      responses:
+        '200':
+          description: >
+            Invite processed. If accepted, the group member is created at the invite's rank. The invite is deleted
+            either way.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Invite not found, or does not belong to the caller
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /group/{group_id}/message:
+    post:
+      tags: [Messages]
+      summary: Post a new message to a group 
+      description: Requires at least a message body or
+        one attached file. Caller must be a group member with rank >=
+        Admin
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Msg'
+      responses:
+        '201':
+          description: Message created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '400':
+          description: Both message text and file_ids were empty (EmptyMessage)
+        '401':
+          description: Token expired (ExpiredToken)
+        '403':
+          description: Caller is not an Admin/Owner member of the group
+        '404':
+          description: Caller is not a member of the group
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /invite/new_user/{prv_level}:
+    post:
+      tags: [Invites]
+      summary: Issue a privilege-grant invite to a possible new user. 
+      description: Caller must currently hold Proprietor privilege.
+      parameters: 
+        - name: prv_level
+          in: path
+          required: true
+          schema: 
+            $ref: '#/components/schemas/PrivilegeT'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrivLevel'
+      responses:
+        '201':
+          description: Invite JWT created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvJwtResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller does not hold Proprietor privilege
+        '404':
+          description: Caller's user record not found
+        '500':
+          description: Db error or JWT encode error
+
+  # ===================== GET =====================
+  /relation/friends:
+    get:
+      tags: [Relations]
+      summary: Get the current user's relations
+      description: this endpoint doesn't return users whom you still have pending invites for, only friends and blocked relations
+      responses:
+        '200':
+          description: >
+            List of relations. Each entry includes `state` (Friends or
+            Blocked) so the caller can distinguish the two.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No relations found (NoMatches)
+
+  /relation/invites:
+    get:
+      tags: [Invites]
+      summary: Get the current user's friend requests
+      responses:
+        '200':
+          description: List of friend requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrippedUserListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No friend requests found (NoMatches)
+
+  /group/all:
+    get:
+      tags: [Groups]
+      summary: Get groups the current user belongs to
+      responses:
+        '200':
+          description: List of groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No groups found (NoMatches)
+
+  /group/invites:
+    get:
+      tags: [Invites]
+      summary: Get pending group invites addressed to the current user
+      responses:
+        '200':
+          description: List of invites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInviteListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No invites found (NoMatches)
+
+  /group/{group_id}/members:
+    get:
+      tags: [Groups]
+      summary: Get members of a group
+      description: >
+        returned as a unique group member type which combines the stripped user and their rank in the group
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: List of group members
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupMemberListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Group has no members / not found (NoMatches)
+
+  /group/{group_id}/message/all:
+    get:
+      tags: [Messages]
+      summary: Get messages for a group
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Group has no messages / not found (NoMatches)
+
+  # ===================== DELETE =====================
+  /user/me:
+    delete:
+      tags: [Users]
+      summary: Delete the current user's account
+      description: Fails if the caller is the last remaining Owner of any group they belong to
+      responses:
+        '200':
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No matching user (NoMatches)
+        '409':
+          description: Caller is the last Owner of one or more groups (LastOwner)
+    patch:
+      tags: [Users]
+      summary: Update the current user's profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /relation/{user_id}:
+    patch:
+      tags: [Relations]
+      summary: Block a user
+      description: >
+        Sets the caller's relation to the given user to 'Blocked'. Unilateral
+        and unconditional: valid from any existing relation state, or no
+        prior relation at all. Does not modify the target user's own
+        relation row. This endpoint only ever results in 'Blocked' — it does
+        not accept a body, since blocking is the only state transition here
+        that has no precondition. To become 'Friends', the target must send
+        or accept an invite via /relation/{user_id}/invite and
+        /relation/invite/{user_id}.
+      parameters: 
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User blocked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '400':
+          description: Caller attempted to block themselves (SelfBlock)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Provided user couldn't be found (NoMatches)
+        '500':
+          $ref: '#/components/responses/DbError'
+    delete:
+      tags: [Relations]
+      summary: Remove the caller's relation to a user
+      description: >
+        Tears down whatever relation currently exists from the caller's
+        side: unfriends (removes both mirrored 'Friends' rows), cancels an
+        outgoing 'Pending' request, or unblocks a user the caller
+        previously blocked. Has no effect on any relation the target may
+        hold in the reverse direction beyond the mirrored-friendship
+        cleanup.
+      parameters: 
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Relation removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No relation exists between caller and the given user (NoMatches)
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /group/{group_id}:
+    delete:
+      tags: [Groups]
+      summary: Delete a group
+      description: can only be called by the group's owner(s)
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: Group deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          description: Missing, invalid, or expired bearer token, or unsatisfactory privileges
+        '404':
+          description: Group not found (NoMatches)
+    patch:
+      tags: [Groups]
+      summary: Update a group
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StrippedGroup'
+      responses:
+        '200':
+          description: Group updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /group/{group_id}/member/{member_id}:
+    delete:
+      tags: [Groups]
+      summary: Remove a member from a group
+      description: the privilege of the caller is required to be higher than the recipient. Additionally calling this endpoint on the last owner of the group will cause it to fail
+      parameters: 
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '200':
+          description: Group member removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          description: Missing, invalid, or expired bearer token, or unsatisfactory privileges
+        '404':
+          description: Group member not found (NoMatches)
+        '409':
+          description: Target is the last remaining Owner of the group (LastOwner)
+
+  /group/{group_id}/message/{message_id}:
+    delete:
+      tags: [Messages]
+      summary: Delete a message
+      description: if the message has an associated user the caller needs to have a higher rank than the recipient
+      parameters: 
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: Message deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Message not found (NoMatches)
+    patch:
+      tags: [Messages]
+      summary: Update a message
+      parameters: 
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StrippedMessage'
+      responses:
+        '200':
+          description: Message updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /object/upload:
+    post:
+      tags: [Objects]
+      summary: Upload one or more files as multipart fields 
+      description: (deduplicated by SHA-256 hash) Body capped at 10MB.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+                format: binary
+              description: One or more arbitrarily-named file fields.
+      responses:
+        '201':
+          description: Objects stored; returns the created/matched object ids
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectIdsResponse'
+        '400':
+          description: Malformed multipart body (BadRequest)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: Payload exceeded 10,000,000 bytes (BodyTooLarge)
+        '415':
+          description: File type could not be inferred (UnknownType)
+        '500':
+          description: Db error or filesystem/operations error
+
+  /object/pull/{object_id}:
+    get:
+      tags: [Objects]
+      summary: Fetch a previously uploaded object
+      description: The handler itself returns an empty body with an `X-Accel-Redirect` after that the responsibility of serving the file is relegated to the local filesystem and nginx
+      parameters:
+        - name: object_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The requested binary object (served via X-Accel-Redirect upstream)
+          headers:
+            X-Accel-Redirect:
+              schema:
+                type: string
+              description: Internal redirect path for the reverse proxy
+            Content-Type:
+              schema:
+                type: string
+              description: The object's stored mime type
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Object not found (NoMatches)
+
+  /relation/{user_id}/invite:
+    post:
+      tags: [Invites]
+      summary: Invite a user to be your friend
+      parameters: 
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Empty return on success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '400':
+          description: Caller attempted to friend-request themselves (SelfInvite)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is blocked by the target user, or has blocked them
+        '404':
+          description: user not found (NoMatches)
+        '409':
+          description: A relation already exists between caller and target (AlreadyRelated)
+
+  /relation/invite/{user_id}:
+    patch:
+      tags: [Invites]
+      summary: Accept or decline a pending friend request from another user
+      parameters: 
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              $ref: '#/components/schemas/InvMng'
+      responses:
+        '200':
+          description: >
+            Request processed. If accepted, mirrored 'Friends' rows are
+            created for both users. The pending request row is deleted
+            either way.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Request not found, or does not belong to the caller (NoMatches)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        JWT access token (Claims { sub: user_id, jti, iat, exp,
+        tkn_type: Access }), validated by the AuthUser extractor.
+
+    inviteBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Privilege-grant invite JWT (PrivClaims { priv_level, jti, iat,
+        exp }) issued by POST /create_invite, validated by the AuthInvite
+        extractor. Used only by /auth/sign_up — distinct from the regular
+        access-token bearerAuth scheme used elsewhere.
+  parameters:
+    GroupId:
+      name: group_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MemberId:
+      name: member_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MessageId:
+      name: message_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid, or expired bearer token
+    BadRequest:
+      description: Invalid request payload
+    DbError:
+      description: Database operation failed
+
+  schemas:
+    # ---- Generic response envelope: Res<T> ----
+    # `status` (StatusCode) is used as the actual HTTP status and is not
+    # part of the JSON body in this rendering; only success/msg/data are.
+    EmptyDataResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        msg:
+          type: string
+        data:
+          nullable: true
+
+    # ---- Enums ----
+    PrivilegeT:
+      type: string
+      enum: [Consumer, Proprietor]
+
+    RankT:
+      type: string
+      enum: [User, Admin, Owner]
+      description: Ordered; User < Admin < Owner.
+
+    RelationT:
+      type: string
+      enum: [Friends, Pending, Blocked]
+
+    # ---- Core entities ----
+    User:
+      type: object
+      required: [id, nickname, prv, username, password, pfp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nickname:
+          type: string
+        prv:
+          $ref: '#/components/schemas/PrivilegeT'
+        username:
+          type: string
+        password:
+          type: string
+        pfp:
+          type: string
+          format: uuid
+          nullable: true
+          description: Object id of the user's profile picture, if set.
+
+    UserRelation:
+      type: object
+      required: [id, nickname, pfp, state]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nickname:
+          type: string
+        pfp:
+          type: string
+          format: uuid
+          nullable: true
+          description: Object id of the user's profile picture, if set.
+        state:
+          $ref: '#/components/schemas/RelationT'
+
+    GroupMember:
+      type: object
+      required: [user_id, nickname, pfp, rank]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        nickname:
+          type: string
+        pfp:
+          type: string
+          format: uuid
+          nullable: true
+        rank:
+          $ref: '#/components/schemas/RankT'
+
+    StrippedUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nickname:
+          type: string
+        pfp:
+          type: string
+          format: uuid
+          nullable: true
+
+    Group:
+      type: object
+      required: [id, name, is_dm]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        is_dm:
+          type: boolean
+        gp:
+          type: string
+          format: uuid
+          nullable: true
+
+    StrippedGroup:
+      type: object
+      required: [id, name, is_dm]
+      properties:
+        name:
+          type: string
+        is_dm:
+          type: boolean
+        gp:
+          type: string
+          format: uuid
+          nullable: true
+
+    Message:
+      type: object
+      required: [id, group_id, user_id]
+      properties:
+        id:
+          type: integer
+          format: int32
+        file_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        message:
+          type: string
+          nullable: true
+        group_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+
+    StrippedMessage:
+      type: object
+      properties:
+        message:
+          type: string
+          nullable: true
+        file_ids:
+          type: array
+          items: 
+            type: string
+            format: uuid
+
+    Group_Invite:
+      type: object
+      required: [id, group_id, user_id, rank]
+      properties:
+        id:
+          type: string
+          format: uuid
+        group_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        rank:
+          $ref: '#/components/schemas/RankT'
+
+    # ---- Request bodies (from post.rs) ----
+    GrpInv:
+      type: object
+      required: [user_id, rank]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        rank:
+          $ref: '#/components/schemas/RankT'
+
+    InvMng:
+      type: object
+      required: [accept]
+      properties:
+        accept:
+          type: boolean
+      description: >
+        Used by both PATCH /group/invite/{invite_id} and
+        PATCH /relation/invite/{user_id} — the invite/request being managed
+        is identified entirely by the path parameter, so no invite payload
+        is carried in the body.
+
+    Msg:
+      type: object
+      required: [file_ids]
+      properties:
+        file_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        message:
+          type: string
+          nullable: true
+
+    PrivLevel:
+      type: object
+      required: [prv_level]
+      properties:
+        prv_level:
+          $ref: '#/components/schemas/PrivilegeT'
+
+    # ---- Auth (from endpoints.rs) ----
+    LoginCred:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
+    SignupCred:
+      type: object
+      required: [nickname, username, password]
+      properties:
+        nickname:
+          type: string
+          description: Must be at least 3 characters after trimming.
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+        pfp:
+          type: string
+          format: uuid
+          nullable: true
+
+    RefreshBody:
+      type: object
+      required: [refresh_tkn]
+      properties:
+        refresh_tkn:
+          type: string
+          description: JWT with Claims.tkn_type = Refresh.
+
+    TokenPair:
+      type: object
+      required: [access_tkn, refresh_tkn]
+      properties:
+        access_tkn:
+          type: string
+          description: JWT with Claims.tkn_type = Access.
+        refresh_tkn:
+          type: string
+          description: JWT with Claims.tkn_type = Refresh.
+
+    UserTokenObj:
+      type: object
+      required: [user_data, token_data]
+      properties:
+        user_data:
+          $ref: '#/components/schemas/User'
+        token_data:
+          $ref: '#/components/schemas/TokenPair'
+
+    # ---- Response payloads (Res<T>.data variants) ----
+    UserTokenObjResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/UserTokenObj'
+
+    TokenPairResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/TokenPair'
+
+    UserResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/User'
+
+    MessageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Message'
+
+    StrippedUserListResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/StrippedUser'
+    
+    RelationsListResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserRelation'
+
+    GroupMemberListResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/GroupMember'
+
+    GroupListResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Group'
+
+    MessageListResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Message'
+
+    GroupInviteListResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Group_Invite'
+
+    InvJwtResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                jwt:
+                  type: string
+                  description: >
+                    JWT encoding PrivClaims { priv_level, jti, iat, exp }
+                    for the requested privilege level.
+
+    ObjectIdsResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid

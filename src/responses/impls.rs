@@ -61,6 +61,7 @@ impl IntoResponse for InternalError {
             InternalError::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "the request body exceeded the maximum size allowed"),
             InternalError::UnknownType => (StatusCode::NOT_FOUND, "type of the file could not be infered"),
             InternalError::EmptyMessage => (StatusCode::NOT_FOUND, "cant send a message without content"),
+            InternalError::DuplicateData => (StatusCode::NOT_FOUND, "this data already exists in some form already"),
         };
 
         let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 

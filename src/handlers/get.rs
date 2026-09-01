@@ -117,7 +117,9 @@ pub async fn get_messages(_auth: AuthUser, State(inf): State<AppState>, Path(gro
 }
 
 pub async fn get_invites(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<Group_Invite>>, InternalError> {
-    let invs = inf.ps_interface.select::<Uuid, Group_Invite>(Some((&["user_id"], &[auth.user_id]))).await.map_err(|_| InternalError::DbError)?;
+    let invs: Vec<Group_Invite> = inf.ps_interface.select(Some((&["user_id"], &[auth.user_id])))
+    .await.map_err(|_| InternalError::DbError)?;
+
     if invs.first().is_none() {
         return Err(InternalError::NoMatches);
     }

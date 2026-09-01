@@ -22,6 +22,7 @@ pub enum InternalError {
     BodyTooLarge,
     UnknownType,
     EmptyMessage,
+    DuplicateData,
 }
 
 pub enum GenericErr {

@@ -1,11 +1,11 @@
-use axum::{Json, extract::{Multipart, State}, http::StatusCode};
+use axum::{Json, extract::{Multipart, Path, State}, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{auth::{creation::create_priv_jwt, extractor::AuthUser}, responses::error_t::{AuthError, GenericErr, InternalError}, types::*};
+use crate::{auth::{creation::create_priv_jwt, extractor::AuthUser}, handlers::fetch_group_member, responses::error_t::{AuthError, GenericErr, InternalError}, types::*};
 
 #[derive(Serialize)]
 pub struct InvJwt {
@@ -24,15 +24,8 @@ pub struct PrivLevel {
 
 #[derive(Serialize, Deserialize)]
 pub struct GrpInv {
-    pub group_id: Uuid,
     pub user_id: Uuid,
     pub rank: RankT,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct InvMng {
-    pub group_invite: Group_Invite,
-    pub accept: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -102,20 +95,25 @@ pub async fn add_message(auth: AuthUser, inf: State<AppState>, Json(data): Json<
     Err(GenericErr::Auth(AuthError::ExpiredToken))
 }
 
-pub async fn invite_group_member(auth: AuthUser, inf: State<AppState>, Json(data): Json<GrpInv>) -> Result<Res<()>, GenericErr> {
+pub async fn invite_group_member(auth: AuthUser, State(inf): State<AppState>, Path(group_id): Path<Uuid>, Json(data): Json<GrpInv>) -> Result<Res<()>, GenericErr> {
     if auth.user_id == data.user_id {
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let member = inf.ps_interface.select::<Uuid, Group_Member>(Some((&["group_id", "member_id"], &[data.group_id, auth.user_id])))
+    let invs: Vec<Group_Invite> = inf.ps_interface.select(Some((&["group_id", "user_id"], &[group_id, data.user_id])))
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    let usr = inf.ps_interface.select::<Uuid, User>(Some((&["id"], &[data.user_id])))
+    if invs.first().is_some() {
+        return Err(GenericErr::Internal(InternalError::DuplicateData));
+    }
+
+    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    .await.map_err(|e| GenericErr::Internal(e))?;
+
+    let usr: Vec<User> = inf.ps_interface.select(Some((&["id"], &[data.user_id])))
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    let mbr = member.first().ok_or(GenericErr::Auth(AuthError::OutsiderInvite))?;
-
-    if mbr.rank < data.rank {
+    if member.rank < data.rank {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
@@ -125,7 +123,7 @@ pub async fn invite_group_member(auth: AuthUser, inf: State<AppState>, Json(data
 
     let inv = Group_Invite {
         id: PLACE_HOLDER_UUID,
-        group_id: data.group_id,
+        group_id: group_id,
         user_id: data.user_id,
         rank: data.rank,
     };
@@ -135,28 +133,8 @@ pub async fn invite_group_member(auth: AuthUser, inf: State<AppState>, Json(data
     return Ok(Res { status: StatusCode::CREATED, success: true, msg: "invite created successfully".to_string(), data: None });
 }
 
-pub async fn manage_group_invite(auth: AuthUser, inf: State<AppState>, Json(data): Json<InvMng>) -> Result<Res<()>, InternalError> {
-    let grp_inv  = data.group_invite;
-    let invs: Vec<Group_Invite> = inf.ps_interface.select(Some((&["id"], &[grp_inv.id]))).await.map_err(|_| InternalError::DbError)?;
-    
-    match invs.first() {
-        Some(inv) => {if inv.user_id != auth.user_id {
-            return Err(InternalError::NoMatches);
-        }},
-        None => {return Err(InternalError::NoMatches);},
-    }
-
-    if data.accept {
-        inf.ps_interface.insert::<Group_Member>(Group_Member { group_id: grp_inv.group_id, member_id: grp_inv.user_id, rank: grp_inv.rank }, true).await.map_err(|_| InternalError::DbError)?;
-    }
-
-    inf.ps_interface.delete::<Uuid, Group_Invite>(&[grp_inv.id]).await.map_err(|_| InternalError::DbError)?;
-
-    return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
-}
-
-pub async fn create_invite(auth: AuthUser, inf: State<AppState>, Json(data): Json<PrivLevel>) -> Result<Res<InvJwt>, GenericErr> {
-    let user = inf.ps_interface.select::<Uuid, User>(Some((&["id"], &vec![auth.user_id])))
+pub async fn create_invite(auth: AuthUser, State(inf): State<AppState>, Json(data): Json<PrivLevel>) -> Result<Res<InvJwt>, GenericErr> {
+    let user: Vec<User> = inf.ps_interface.select(Some((&["id"], &vec![auth.user_id])))
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
     let usr = user.first().ok_or(GenericErr::Internal(InternalError::NoMatches))?;
