@@ -9,7 +9,7 @@ pub enum AuthError {
     InvalidNickname,
     InvalidPrivilige,
     SelfInvite,
-    OutsiderInvite,
+    UserUnreachable,
 }
 
 pub enum InternalError {

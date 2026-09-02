@@ -66,7 +66,7 @@ pub async fn add_group(auth: AuthUser, inf: State<AppState>, Json(data): Json<Gr
 }
 
 //TODO: SAFEGURAD FOR DB FALIURES AFTER BASE MESSAGE INSERT
-pub async fn add_message(auth: AuthUser, inf: State<AppState>, Json(data): Json<Msg>) -> Result<Res<()>, GenericErr> {
+pub async fn add_message(auth: AuthUser, State(inf): State<AppState>, Json(data): Json<Msg>) -> Result<Res<()>, GenericErr> {
     if data.file_ids.first().is_none() && data.message.is_none() {
         return Err(GenericErr::Internal(InternalError::EmptyMessage));
     }
@@ -133,6 +133,38 @@ pub async fn invite_group_member(auth: AuthUser, State(inf): State<AppState>, Pa
     return Ok(Res { status: StatusCode::CREATED, success: true, msg: "invite created successfully".to_string(), data: None });
 }
 
+pub async fn create_friend_invite(auth: AuthUser, State(inf): State<AppState>, Path(user_id): Path<Uuid>) -> Result<Res<()>, GenericErr> {
+    if auth.user_id == user_id {
+        return Err(GenericErr::Auth(AuthError::SelfInvite));
+    }
+
+    let user: Vec<User> = inf.ps_interface.select(Some((&["id"], &[user_id])))
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    if user.first().is_none() {
+        return Err(GenericErr::Internal(InternalError::NoMatches));
+    }
+
+    let invs: Vec<Relation> = inf.ps_interface.select(Some((&["relating_user", "related_user"], &[auth.user_id, user_id])))
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    if let Some(inv) = invs.first() {
+        match inv.state {
+            RelationT::Blocked => {return Err(GenericErr::Auth(AuthError::UserUnreachable));},
+            _ => {return Err(GenericErr::Internal(InternalError::DuplicateData));},
+        }
+    }
+
+    inf.ps_interface.insert::<Relation>(Relation {
+        relating_user: auth.user_id,
+        related_user: user_id,
+        state: RelationT::Pending,
+    }, true)
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
+}
+
 pub async fn create_invite(auth: AuthUser, State(inf): State<AppState>, Json(data): Json<PrivLevel>) -> Result<Res<InvJwt>, GenericErr> {
     let user: Vec<User> = inf.ps_interface.select(Some((&["id"], &vec![auth.user_id])))
     .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
@@ -156,7 +188,7 @@ pub async fn create_invite(auth: AuthUser, State(inf): State<AppState>, Json(dat
     return Ok(res);
 }
 
-pub async fn upload(_auth: AuthUser, inf: State<AppState>, mut data: Multipart) -> Result<Res<ObjectIds>, InternalError> {
+pub async fn upload(_auth: AuthUser, State(inf): State<AppState>, mut data: Multipart) -> Result<Res<ObjectIds>, InternalError> {
     let match_err = |status: StatusCode, rm: Option<String>| -> InternalError {
         if let Some(rm_path) = rm {
             tokio::spawn(tokio::fs::remove_file(rm_path));

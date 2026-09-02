@@ -58,6 +58,21 @@ pub async fn delete_group_member(auth: AuthUser, State(inf): State<AppState>, Pa
     }
 }
 
+pub async fn delete_relation(auth: AuthUser, State(inf): State<AppState>, Path(user_id): Path<Uuid>) -> Result<Res<()>, GenericErr> {
+    if auth.user_id == user_id {
+        return Err(GenericErr::Auth(AuthError::SelfInvite));
+    }
+    let (caller_to_user, user_to_caller): (Vec<Relation>, Vec<Relation>) = (
+        inf.ps_interface.delete::<Uuid, Relation>(&[auth.user_id, user_id]).await.map_err(|_| GenericErr::Internal(InternalError::DbError))?,
+        inf.ps_interface.delete::<Uuid, Relation>(&[user_id, auth.user_id]).await.map_err(|_| GenericErr::Internal(InternalError::DbError))?
+    );
+
+    if caller_to_user.first().is_none() || user_to_caller.first().is_none() {
+        return Err(GenericErr::Internal(InternalError::NoMatches));
+    }
+
+    return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
+}
 pub async fn delete_message(_auth: AuthUser, State(inf): State<AppState>, Path(message_id): Path<i32>) -> Result<Res<()>, InternalError> {
     let deletes = inf.ps_interface.delete::<i32, Message>(&vec![message_id])
     .await.map_err(|_| InternalError::DbError)?;

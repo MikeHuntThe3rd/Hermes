@@ -11,17 +11,17 @@ use crate::{auth::extractor::AuthUser, responses::error_t::InternalError};
 use crate::{types::*, handlers::*};
 
 
-pub async fn get_friends(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<StrippedUser>>, InternalError> {
+pub async fn get_friends(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<StrippedMember>>, InternalError> {
     //TODO: SQL HASNT BEEN REWRITTEN YET!!!!!!!!!
     let sql: &'static str = "SELECT * FROM users 
     JOIN relations ON relations.related_user = users.id 
     WHERE relations.relating_user = $1 AND relations.state = $2;";
 
-    let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> = sqlx::query_as(sql)
+    let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> = sqlx::query_as(sql)
     .bind(auth.user_id)
     .bind(RelationT::Friends);
 
-    let users: Vec<StrippedUser> = inf.ps_interface.generic_fetch(query).await.map_err(|_| InternalError::DbError)?;
+    let users: Vec<StrippedMember> = inf.ps_interface.generic_fetch(query).await.map_err(|_| InternalError::DbError)?;
 
     if users.len() < 1 {
         return Err(InternalError::NoMatches);
@@ -63,7 +63,7 @@ pub async fn get_groups(auth: AuthUser, State(inf): State<AppState>) -> Result<R
     );
 }
 
-pub async fn get_group_members(_auth: AuthUser, State(inf): State<AppState>, Path(group_id) : Path<Uuid>) -> Result<Res<Vec<StrippedUser>>, InternalError> {
+pub async fn get_group_members(_auth: AuthUser, State(inf): State<AppState>, Path(group_id) : Path<Uuid>) -> Result<Res<Vec<StrippedMember>>, InternalError> {
     let sql: &'static str = "SELECT id AS user_id, nickname, pfp, group_members.rank AS rank FROM users 
     JOIN group_members ON group_members.member_id = users.id 
     WHERE group_members.group_id = $1;";
@@ -71,10 +71,10 @@ pub async fn get_group_members(_auth: AuthUser, State(inf): State<AppState>, Pat
     //checks if the group exists
     fetch_group(inf.clone(), &group_id).await?;
 
-    let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> = sqlx::query_as(sql)
+    let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> = sqlx::query_as(sql)
     .bind(group_id);
 
-    let users: Vec<StrippedUser> = inf.ps_interface.generic_fetch(query)
+    let users: Vec<StrippedMember> = inf.ps_interface.generic_fetch(query)
     .await.map_err(|_| InternalError::DbError)?;
 
     if users.len() < 1 {
@@ -116,7 +116,7 @@ pub async fn get_messages(_auth: AuthUser, State(inf): State<AppState>, Path(gro
     );
 }
 
-pub async fn get_invites(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<Group_Invite>>, InternalError> {
+pub async fn get_group_invites(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<Group_Invite>>, InternalError> {
     let invs: Vec<Group_Invite> = inf.ps_interface.select(Some((&["user_id"], &[auth.user_id])))
     .await.map_err(|_| InternalError::DbError)?;
 
@@ -124,6 +124,25 @@ pub async fn get_invites(auth: AuthUser, State(inf): State<AppState>) -> Result<
         return Err(InternalError::NoMatches);
     }
     return Ok(Res { status: StatusCode::FOUND, success: true, msg: String::new(), data: Some(invs) });
+}
+
+pub async fn get_friend_invites(auth: AuthUser, State(inf): State<AppState>) -> Result<Res<Vec<StrippedUser>>, InternalError> {
+    let sql: &'static str = "SELECT users.id AS user_id, nickname, pfp FROM users 
+    JOIN relations ON relations.related_user = users.id 
+    WHERE relations.state = $1 AND users.id = $2;";
+
+    let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> = sqlx::query_as(sql)
+    .bind(RelationT::Pending)
+    .bind(auth.user_id);
+
+    let users = inf.ps_interface.generic_fetch(query)
+    .await.map_err(|_| InternalError::DbError)?;
+
+    if users.first().is_none() {
+        return Err(InternalError::NoMatches);
+    }
+
+    return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: Some(users) });
 }
 
 pub async fn pull(_auth: AuthUser, State(inf): State<AppState>, Path(object_id): Path<Uuid>) -> Result<impl IntoResponse, InternalError> {

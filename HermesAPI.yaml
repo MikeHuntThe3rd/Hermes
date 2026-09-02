@@ -224,17 +224,11 @@ paths:
         '500':
           $ref: '#/components/responses/DbError'
 
-  /invite/new_user/{prv_level}:
+  /invite/new_user:
     post:
       tags: [Invites]
       summary: Issue a privilege-grant invite to a possible new user. 
       description: Caller must currently hold Proprietor privilege.
-      parameters: 
-        - name: prv_level
-          in: path
-          required: true
-          schema: 
-            $ref: '#/components/schemas/PrivilegeT'
       requestBody:
         required: true
         content:
@@ -262,7 +256,7 @@ paths:
     get:
       tags: [Relations]
       summary: Get the current user's relations
-      description: this endpoint doesn't return users whom you still have pending invites for, only friends and blocked relations
+      description: this endpoint doesn't return users whom you still have pending invites for, only friends
       responses:
         '200':
           description: >
@@ -406,16 +400,9 @@ paths:
   /relation/{user_id}:
     patch:
       tags: [Relations]
-      summary: Block a user
+      summary: Update a relation
       description: >
-        Sets the caller's relation to the given user to 'Blocked'. Unilateral
-        and unconditional: valid from any existing relation state, or no
-        prior relation at all. Does not modify the target user's own
-        relation row. This endpoint only ever results in 'Blocked' — it does
-        not accept a body, since blocking is the only state transition here
-        that has no precondition. To become 'Friends', the target must send
-        or accept an invite via /relation/{user_id}/invite and
-        /relation/invite/{user_id}.
+        caller must have a relation of Friend or Blocked with the related user
       parameters: 
         - name: user_id
           in: path
@@ -423,6 +410,12 @@ paths:
           schema:
             type: string
             format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationStatus'
       responses:
         '200':
           description: User blocked
@@ -430,8 +423,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EmptyDataResponse'
-        '400':
-          description: Caller attempted to block themselves (SelfBlock)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -442,12 +433,7 @@ paths:
       tags: [Relations]
       summary: Remove the caller's relation to a user
       description: >
-        Tears down whatever relation currently exists from the caller's
-        side: unfriends (removes both mirrored 'Friends' rows), cancels an
-        outgoing 'Pending' request, or unblocks a user the caller
-        previously blocked. Has no effect on any relation the target may
-        hold in the reverse direction beyond the mirrored-friendship
-        cleanup.
+        Tears down whatever relation currently exists between the caller and the given user
       parameters: 
         - name: user_id
           in: path
@@ -839,7 +825,7 @@ components:
     StrippedUser:
       type: object
       properties:
-        id:
+        user_id:
           type: string
           format: uuid
         nickname:
@@ -970,6 +956,13 @@ components:
       properties:
         prv_level:
           $ref: '#/components/schemas/PrivilegeT'
+
+    RelationStatus:
+      type: object
+      required: [state]
+      properties:
+        state:
+          $ref: '#/components/schemas/RelationT'
 
     # ---- Auth (from endpoints.rs) ----
     LoginCred:

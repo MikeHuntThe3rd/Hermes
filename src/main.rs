@@ -97,7 +97,7 @@ async fn main() {
     /* ===== Groups ===== */
     .route("/", post(add_group))
     .route("/all", get(get_groups))
-    .route("/invites", get(get_invites))
+    .route("/invites", get(get_group_invites))
     .route("/{group_id}/members", get(get_group_members))
     .route("/{group_id}", delete(delete_group))
     .route("/{group_id}", patch(update_group))
@@ -111,9 +111,11 @@ async fn main() {
 
     let relations: Router<AppState> = Router::new()
     .route("/friends", get(get_friends))
-    .route("/invites", get(place_holder_fn))
-    .route("/{user_id}", patch(place_holder_fn))
-    .route("/{user_id}", delete(place_holder_fn));
+    .route("/invites", get(get_friend_invites))
+    .route("/{user_id}/invite", post(create_friend_invite))
+    .route("/invite/{user_id}", patch(manage_friend_invite))
+    .route("/{user_id}", patch(update_relation))
+    .route("/{user_id}", delete(delete_relation));
 
     let users: Router<AppState> = Router::new()
     .route("/me", delete(delete_self))

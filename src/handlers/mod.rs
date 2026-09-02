@@ -11,11 +11,18 @@ use uuid::Uuid;
 use crate::{responses::error_t::InternalError, types::{Group, Group_Member, RankT}};
 
 #[derive(Serialize, Deserialize, FromRow)]
-pub struct StrippedUser {
+pub struct StrippedMember {
     pub user_id: Uuid,
     pub nickname: String,
     pub pfp: Option<Uuid>,
     pub rank: RankT,
+}
+
+#[derive(Serialize, Deserialize, FromRow)]
+pub struct StrippedUser {
+    pub user_id: Uuid,
+    pub nickname: String,
+    pub pfp: Option<Uuid>,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize)]

@@ -56,7 +56,7 @@ pub enum TokenType {
     Refresh,
 }
 
-#[derive(Debug, sqlx::Type, Serialize, Deserialize)]
+#[derive(Debug, sqlx::Type, Serialize, Deserialize, PartialEq)]
 #[sqlx(type_name = "relation_t")]
 pub enum RelationT {
     Friends, 
@@ -155,10 +155,12 @@ pub struct Message_Object {
     pub object_id: Uuid,
 }
 
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "relating_user;related_user"]
 pub struct Relation {
-    relating_user: Uuid,
-    related_user: Uuid,
-    state: RelationT,
+    pub relating_user: Uuid,
+    pub related_user: Uuid,
+    pub state: RelationT,
 }
 
 #[derive(Clone)]
