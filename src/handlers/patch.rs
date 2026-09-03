@@ -129,11 +129,11 @@ pub async fn manage_group_invite(
     if data.accept {
         inf.ps_interface
             .insert::<Group_Member>(
-                Group_Member {
+                &[Group_Member {
                     group_id: inv.group_id,
                     member_id: inv.user_id,
                     rank: inv.rank,
-                },
+                }],
                 true,
             )
             .await
@@ -182,11 +182,11 @@ pub async fn manage_friend_invite(
             .map_err(|_| InternalError::DbError)?;
         inf.ps_interface
             .insert(
-                Relation {
+                &[Relation {
                     relating_user: auth.user_id,
                     related_user: user_id,
                     state: RelationT::Friends,
-                },
+                }],
                 true,
             )
             .await
@@ -258,20 +258,24 @@ pub async fn update_message(
 
     let new_objs_hash: HashSet<Uuid> = data.file_ids.into_iter().collect();
 
+    let insert_objs: Vec<Message_Object>;
     for file_id in &new_objs_hash {
         if !msg_objs_hash.contains(&file_id) {
-            inf.ps_interface
-                .insert(
-                    Message_Object {
-                        message_id: msg.id,
-                        object_id: *file_id,
-                    },
+            insert_objs.push(
+                Message_Object {
+                    message_id: msg.id,
+                    object_id: *file_id,
+                });
+            
+        }
+    }
+
+    inf.ps_interface.insert(
+                    &insert_objs,
                     true,
                 )
                 .await
                 .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
-        }
-    }
 
     for old_obj in msg_objs_hash {
         if !new_objs_hash.contains(&old_obj) {

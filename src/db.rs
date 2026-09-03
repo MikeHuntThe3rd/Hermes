@@ -34,7 +34,7 @@ impl PsInterface {
         return Ok(PsInterface { pool: conn_pool });
     }
 
-    pub async fn insert<T>(&self, data: T, insert_all: bool) -> Result<T, sqlx::Error>
+    pub async fn insert<T>(&self, data: &[T], insert_all: bool) -> Result<Vec<T>, sqlx::Error>
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
@@ -51,17 +51,36 @@ impl PsInterface {
             sepr.push(col);
         });
 
-        sql.push(") VALUES ( ");
+        sql.push(") VALUES ");
 
-        let mut sepr = sql.separated(", ");
-        (1..=cols.len()).for_each(|param| {
-            sepr.push(format!("${param}"));
-        });
+        let mut sepr_outer = sql.separated(", ");
+        let mut index: i32 = 1;
+        for _ in 0..data.len() {
+            sepr_outer.push("(");
 
-        sql.push(") RETURNING *;");
+            (0..cols.len()).for_each(|i| {
+                let inp = format!("${index}");
+                if i == 0 {
+                    sepr_outer.push_unseparated(inp);
+                }
+                else {
+                    sepr_outer.push(inp);
+                }
 
-        let query = data.bind_values(sql.build_query_as::<T>(), BindVal::BASE);
-        let res = query.fetch_one(&self.pool).await?;
+                index += 1;
+            });
+            
+            sepr_outer.push_unseparated(")");
+        }
+
+        sql.push(" RETURNING *;");
+
+        let mut query = sql.build_query_as::<T>();
+        for generic in data {
+            query = generic.bind_values(query, BindVal::BASE);
+        }
+
+        let res = query.fetch_all(&self.pool).await?;
         Ok(res)
     }
 

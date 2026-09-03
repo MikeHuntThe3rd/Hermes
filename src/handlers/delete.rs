@@ -153,6 +153,6 @@ pub async fn delete_message(
             data: None,
         });
     } else {
-        return Err(InternalError::NoMatches);
+        return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 }

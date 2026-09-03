@@ -35,14 +35,14 @@ async fn ensure_master_user(state: AppState) {
     .await.expect("master user querying is expected to succeed");
 
     if user_s.len() < 1 {
-        inf.insert::<User>(User { 
+        inf.insert::<User>(&[User { 
             id: Uuid::new_v4(), 
             nickname: "master".to_string(), 
             prv: PrivilegeT::Proprietor, 
             username: usr_nm, 
             password: pswrd, 
             pfp: None 
-        }, false)
+        }], false)
         .await.expect("master user inserting is expected to succeed");
     }
 }

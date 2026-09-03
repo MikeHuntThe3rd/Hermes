@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::{creation::create_priv_jwt, extractor::AuthUser},
-    handlers::fetch_group_member,
+    handlers::{fetch_group_member, Msg},
     responses::error_t::{AuthError, GenericErr, InternalError},
     types::*,
 };
@@ -52,28 +52,24 @@ pub async fn add_group(
     let group = inf
         .ps_interface
         .insert::<Group>(
-            Group {
+            &[Group {
                 id: PLACE_HOLDER_UUID,
                 name: data.name,
                 is_dm: data.is_dm,
                 gp: data.gp,
-            },
-            false,
-        )
+            }],false,)
         .await
-        .map_err(|_| InternalError::DbError)?;
+        .map_err(|_| InternalError::DbError)?
+        .into_iter().next().ok_or(InternalError::DbError)?;
 
     let member = inf
         .ps_interface
         .insert::<Group_Member>(
-            Group_Member {
+            &[Group_Member {
                 group_id: group.id,
                 member_id: auth.user_id,
                 rank: RankT::Owner,
-            },
-            true,
-        )
-        .await;
+            }],true).await;
 
     if member.is_err() {
         inf.ps_interface
@@ -101,45 +97,40 @@ pub async fn add_message(
         return Err(GenericErr::Internal(InternalError::EmptyMessage));
     }
 
-    let grp_member: Vec<Group_Member> = inf
+    inf
         .ps_interface
-        .select(Some((
+        .select::<Uuid, Group_Member>(Some((
             &["group_id", "member_id"],
             &[group_id, auth.user_id],
         )))
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
-
-    let member = grp_member
-        .first()
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?
+        .into_iter()
+        .next()
         .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
-    if grp.rank < RankT::Admin {
-        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
-    }
 
     let msg: Message = inf
         .ps_interface
         .insert(
-            Message {
+            &[Message {
                 id: 0,
                 message: data.message,
                 group_id: group_id,
-                user_id: auth.user_id,
-            },
-            false,
-        )
+                user_id: Some(auth.user_id),
+            }], false)
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?
+        .into_iter().next().ok_or(GenericErr::Internal(InternalError::DbError))?;
 
     for file_id in data.file_ids {
         let msg_obj = inf
             .ps_interface
             .insert(
-                Message_Object {
+                &[Message_Object {
                     message_id: msg.id,
                     object_id: file_id,
-                },
+                }],
                 true,
             )
             .await;
@@ -208,7 +199,7 @@ pub async fn invite_group_member(
     };
 
     inf.ps_interface
-        .insert(inv, true)
+        .insert(&[inv], true)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -260,14 +251,11 @@ pub async fn create_friend_invite(
     }
 
     inf.ps_interface
-        .insert::<Relation>(
-            Relation {
+        .insert::<Relation>( &[Relation {
                 relating_user: auth.user_id,
                 related_user: user_id,
                 state: RelationT::Pending,
-            },
-            true,
-        )
+            }],true,)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -425,7 +413,7 @@ pub async fn upload(
 
         let obj = inf
             .ps_interface
-            .insert::<Object>(new_obj, false)
+            .insert::<Object>(&[new_obj], false)
             .await
             .map_err(|_| {
                 if matches.first().is_none() {
@@ -434,7 +422,8 @@ pub async fn upload(
                     ));
                 }
                 InternalError::DbError
-            })?;
+            })?
+            .into_iter().next().ok_or(InternalError::DbError)?;
 
         objs.ids.push(obj.id);
     }
