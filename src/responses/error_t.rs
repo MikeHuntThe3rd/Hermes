@@ -1,4 +1,3 @@
-
 #[derive(Clone)]
 pub enum AuthError {
     MissingToken,
@@ -10,6 +9,7 @@ pub enum AuthError {
     InvalidPrivilige,
     SelfInvite,
     UserUnreachable,
+    NonOwner,
 }
 
 pub enum InternalError {
@@ -23,6 +23,7 @@ pub enum InternalError {
     UnknownType,
     EmptyMessage,
     DuplicateData,
+    DetachedOwner,
 }
 
 pub enum GenericErr {

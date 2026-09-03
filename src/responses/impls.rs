@@ -1,8 +1,8 @@
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 
-use crate::types::Res;
 use super::error_t::*;
+use crate::types::Res;
 
 #[derive(Serialize)]
 struct ResBody<T> {
@@ -12,13 +12,14 @@ struct ResBody<T> {
 }
 
 impl<T> IntoResponse for Res<T>
-where T: Serialize
+where
+    T: Serialize,
 {
     fn into_response(self) -> axum::response::Response {
-        let body = ResBody { 
-            success: self.success, 
-            msg: self.msg, 
-            data: self.data
+        let body = ResBody {
+            success: self.success,
+            msg: self.msg,
+            data: self.data,
         };
 
         let mut resp = Json(body).into_response();
@@ -33,17 +34,43 @@ impl IntoResponse for AuthError {
     fn into_response(self) -> axum::response::Response {
         let (code, msg) = match self {
             AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "given jwt is invalid"),
-            AuthError::InvalidCredentials => (StatusCode::UNAUTHORIZED, "password or username is incorrect"),
-            AuthError::MissingToken => (StatusCode::UNAUTHORIZED, "jwt token required but not found"),
-            AuthError::WrongTokenType => (StatusCode::UNAUTHORIZED, "jwt type doesn't match the expected token type of the request"),
+            AuthError::InvalidCredentials => (
+                StatusCode::UNAUTHORIZED,
+                "password or username is incorrect",
+            ),
+            AuthError::MissingToken => {
+                (StatusCode::UNAUTHORIZED, "jwt token required but not found")
+            }
+            AuthError::WrongTokenType => (
+                StatusCode::UNAUTHORIZED,
+                "jwt type doesn't match the expected token type of the request",
+            ),
             AuthError::ExpiredToken => (StatusCode::UNAUTHORIZED, "given jwt is listed as expired"),
-            AuthError::InvalidPrivilige => (StatusCode::UNAUTHORIZED, "provided privilige level isnt high enough"),
-            AuthError::InvalidNickname => (StatusCode::UNAUTHORIZED, "provided username does not meet the required 3 character limit"),
+            AuthError::InvalidPrivilige => (
+                StatusCode::UNAUTHORIZED,
+                "provided privilige level isnt high enough",
+            ),
+            AuthError::InvalidNickname => (
+                StatusCode::UNAUTHORIZED,
+                "provided username does not meet the required 3 character limit",
+            ),
             AuthError::SelfInvite => (StatusCode::UNAUTHORIZED, "you cannot invite yourself"),
-            AuthError::UserUnreachable => (StatusCode::FORBIDDEN, "the associated user with this request cannot be reached"),
+            AuthError::UserUnreachable => (
+                StatusCode::FORBIDDEN,
+                "the associated user with this request cannot be reached",
+            ),
+            AuthError::NonOwner => (
+                StatusCode::FORBIDDEN,
+                "the associated data is owned by a different user",
+            ),
         };
 
-        let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 
+        let res: Res<()> = Res {
+            status: code,
+            success: false,
+            msg: msg.to_string(),
+            data: None,
+        };
 
         return res.into_response();
     }
@@ -52,19 +79,54 @@ impl IntoResponse for AuthError {
 impl IntoResponse for InternalError {
     fn into_response(self) -> axum::response::Response {
         let (code, msg) = match self {
-            InternalError::DbError => (StatusCode::INTERNAL_SERVER_ERROR, "given data resulted in a faulty db request"),
-            InternalError::RedisError => (StatusCode::INTERNAL_SERVER_ERROR, "redis service is down. try again"),
-            InternalError::DecodeEncodeErr => (StatusCode::INTERNAL_SERVER_ERROR, "an error occured while encoding/decoding data"),
-            InternalError::OperationsError => (StatusCode::INTERNAL_SERVER_ERROR, "internal operations in the server failed"),
+            InternalError::DbError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "given data resulted in a faulty db request",
+            ),
+            InternalError::RedisError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "redis service is down. try again",
+            ),
+            InternalError::DecodeEncodeErr => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "an error occured while encoding/decoding data",
+            ),
+            InternalError::OperationsError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal operations in the server failed",
+            ),
             InternalError::NoMatches => (StatusCode::NOT_FOUND, "no row matched the given data"),
-            InternalError::BadRequest => (StatusCode::BAD_REQUEST, "the request body was incorrectly formatted"),
-            InternalError::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "the request body exceeded the maximum size allowed"),
-            InternalError::UnknownType => (StatusCode::NOT_FOUND, "type of the file could not be infered"),
-            InternalError::EmptyMessage => (StatusCode::NOT_FOUND, "cant send a message without content"),
-            InternalError::DuplicateData => (StatusCode::NOT_FOUND, "this data already exists in some form already"),
+            InternalError::BadRequest => (
+                StatusCode::BAD_REQUEST,
+                "the request body was incorrectly formatted",
+            ),
+            InternalError::BodyTooLarge => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "the request body exceeded the maximum size allowed",
+            ),
+            InternalError::UnknownType => (
+                StatusCode::NOT_FOUND,
+                "type of the file could not be infered",
+            ),
+            InternalError::EmptyMessage => {
+                (StatusCode::NOT_FOUND, "cant send a message without content")
+            }
+            InternalError::DuplicateData => (
+                StatusCode::NOT_FOUND,
+                "this data already exists in some form already",
+            ),
+            InternalError::DetachedOwner => (
+                StatusCode::NOT_FOUND,
+                "this data has no owner and doesn't perimt patch operations",
+            ),
         };
 
-        let res: Res<()> = Res { status: code, success: false, msg: msg.to_string(), data: None }; 
+        let res: Res<()> = Res {
+            status: code,
+            success: false,
+            msg: msg.to_string(),
+            data: None,
+        };
 
         return res.into_response();
     }
@@ -78,4 +140,3 @@ impl IntoResponse for GenericErr {
         };
     }
 }
-

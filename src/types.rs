@@ -1,11 +1,11 @@
+use crate::db::*;
+use crate::logging::Logs;
 use axum::http::StatusCode;
 use derive_macros::Bindable;
 use fred::clients::Client;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
-use crate::logging::Logs;
-use crate::db::*;
-use uuid::{Uuid, uuid};
+use uuid::Uuid;
 /* ===== CONSTS ===== */
 
 pub const TEMP_PTH_STR: &'static str = "/var/lib/hermes_objs/temp/";
@@ -29,14 +29,16 @@ pub trait Bindable {
     fn bind_values<'lftm>(
         &'lftm self,
         query: QueryAs<'lftm, Postgres, Self, PgArguments>,
-        bind_val: BindVal)
-        -> QueryAs<'lftm, Postgres, Self, PgArguments>
-        where Self: Sized;
+        bind_val: BindVal,
+    ) -> QueryAs<'lftm, Postgres, Self, PgArguments>
+    where
+        Self: Sized;
 }
 
-pub trait Logging<I, O> 
-where O: serde::Serialize,
-I: serde::Serialize
+pub trait Logging<I, O>
+where
+    O: serde::Serialize,
+    I: serde::Serialize,
 {
     fn log_if_err(self, logs: &mut Logs<I, O>) -> Self;
 }
@@ -59,15 +61,15 @@ pub enum TokenType {
 #[derive(Debug, sqlx::Type, Serialize, Deserialize, PartialEq)]
 #[sqlx(type_name = "relation_t")]
 pub enum RelationT {
-    Friends, 
-    Pending, 
+    Friends,
+    Pending,
     Blocked,
 }
 #[derive(Debug, sqlx::Type, Serialize, Deserialize, Clone, PartialEq)]
 #[sqlx(type_name = "privilege_t")]
 pub enum PrivilegeT {
     Consumer,
-    Proprietor, 
+    Proprietor,
 }
 
 #[derive(Debug, sqlx::Type, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -75,13 +77,14 @@ pub enum PrivilegeT {
 pub enum RankT {
     User,
     Admin,
-    Owner, 
+    Owner,
 }
 
 /* ===== STRUCTS ===== */
 
 pub struct Res<T>
-where T: Serialize
+where
+    T: Serialize,
 {
     pub status: StatusCode,
     pub success: bool,
@@ -115,18 +118,18 @@ pub struct Message {
     pub id: i32,
     pub message: Option<String>,
     pub group_id: Uuid,
-    pub user_id: Uuid,
+    pub user_id: Option<Uuid>,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "id"]
 pub struct Object {
-  pub id: Uuid,
-  pub hash : String,
-  pub rel_path: String,
-  pub mime_type: String,
-  pub size_bytes: i64,
-  pub creation_timestamp: i64,
+    pub id: Uuid,
+    pub hash: String,
+    pub rel_path: String,
+    pub mime_type: String,
+    pub size_bytes: i64,
+    pub creation_timestamp: i64,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
@@ -187,4 +190,3 @@ pub struct PrivClaims {
     pub iat: usize,
     pub exp: usize,
 }
-

@@ -217,8 +217,6 @@ paths:
           description: Both message text and file_ids were empty (EmptyMessage)
         '401':
           description: Token expired (ExpiredToken)
-        '403':
-          description: Caller is not an Admin/Owner member of the group
         '404':
           description: Caller is not a member of the group
         '500':
@@ -555,7 +553,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MessageResponse'
+                $ref: '#/components/schemas/EmptyDataResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
