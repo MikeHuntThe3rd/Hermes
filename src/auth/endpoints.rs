@@ -127,14 +127,15 @@ pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<Si
     .set::<(), _, _>(&key, 1, Some(fred::types::Expiration::EX(ttl)), None, false)
     .await.map_err(|_| GenericErr::Internal(InternalError::RedisError))?;
 
-    let usr = inf.ps_interface.insert::<User>(User { 
+    let usr = inf.ps_interface.insert::<User>(&[User { 
         id: PLACE_HOLDER_UUID, 
         nickname: data.nickname, 
         prv: auth.claims.priv_level, 
         username: data.username, 
         password: data.password, 
-        pfp: None }, false)
-    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        pfp: None }], false)
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?
+    .into_iter().next().ok_or(GenericErr::Internal(InternalError::DbError))?;
 
     let access: String = create_jwt(usr.id, TokenType::Access, &inf.jwt_secret).await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 

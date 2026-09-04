@@ -87,7 +87,6 @@ pub async fn get_group_members(
     JOIN group_members ON group_members.member_id = users.id 
     WHERE group_members.group_id = $1;";
 
-    //checks if the group exists
     fetch_group(inf.clone(), &group_id).await?;
 
     let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> =

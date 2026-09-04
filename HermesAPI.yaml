@@ -1043,14 +1043,6 @@ components:
             data:
               $ref: '#/components/schemas/User'
 
-    MessageResponse:
-      allOf:
-        - $ref: '#/components/schemas/EmptyDataResponse'
-        - type: object
-          properties:
-            data:
-              $ref: '#/components/schemas/Message'
-
     StrippedUserListResponse:
       allOf:
         - $ref: '#/components/schemas/EmptyDataResponse'

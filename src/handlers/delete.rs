@@ -16,7 +16,7 @@ pub async fn delete_self(
         .await
         .map_err(|_| InternalError::DbError)?;
 
-    if deletes.len() >= 1 {
+    if deletes.is_empty() {
         return Ok(Res {
             status: StatusCode::OK,
             success: true,

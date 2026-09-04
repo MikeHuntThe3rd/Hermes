@@ -1,6 +1,9 @@
 use axum::extract::{Path, State};
 use axum::{Json, http::StatusCode};
 use serde::{Deserialize, Serialize};
+use sqlx::{Postgres, query};
+use sqlx::postgres::PgArguments;
+use sqlx::query::Query;
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -247,7 +250,7 @@ pub async fn update_message(
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    let msg_objs_hash: HashSet<Uuid> = inf
+    let old_objs_hash: HashSet<Uuid> = inf
         .ps_interface
         .select(Some((&["message_id"], &[msg.id])))
         .await
@@ -258,33 +261,21 @@ pub async fn update_message(
 
     let new_objs_hash: HashSet<Uuid> = data.file_ids.into_iter().collect();
 
-    let insert_objs: Vec<Message_Object>;
-    for file_id in &new_objs_hash {
-        if !msg_objs_hash.contains(&file_id) {
-            insert_objs.push(
-                Message_Object {
-                    message_id: msg.id,
-                    object_id: *file_id,
-                });
-            
-        }
-    }
+    let insert_objs: Vec<Message_Object> = new_objs_hash.difference(&old_objs_hash)
+    .map(|obj_id| Message_Object { message_id: msg.id, object_id: *obj_id })
+    .collect();
 
-    inf.ps_interface.insert(
-                    &insert_objs,
-                    true,
-                )
-                .await
-                .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+    let delete_objs: Vec<&Uuid> = old_objs_hash.difference(&new_objs_hash).collect();
 
-    for old_obj in msg_objs_hash {
-        if !new_objs_hash.contains(&old_obj) {
-            inf.ps_interface
-                .delete::<Uuid, Message_Object>(&[msg.id, old_obj])
-                .await
-                .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
-        }
-    }
+    inf.ps_interface.insert(&insert_objs,true,)
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    let sql: &'static str = "DELETE FROM message_objects WHERE message_id = $1 AND object_id = ANY($2);";
+
+    let query: Query<'_, Postgres, PgArguments> = query(sql).bind(msg.id).bind(delete_objs);
+
+    inf.ps_interface.generic_exec(query).await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
     return Ok(Res {
         status: StatusCode::OK,
         success: true,

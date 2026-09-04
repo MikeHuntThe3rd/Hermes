@@ -24,8 +24,6 @@ use handlers::{post::*
 
 use crate::{db::LiteInterface, types::User};
 
-async fn place_holder_fn(){}
-
 async fn ensure_master_user(state: AppState) {
     let inf = state.ps_interface;
     let (usr_nm, pswrd) = (env::var("M_USERNAME").expect("the variable for the master user's username is expected")

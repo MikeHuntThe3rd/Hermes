@@ -38,6 +38,9 @@ impl PsInterface {
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
+        if data.first().is_none() {
+            return Err(sqlx::Error::InvalidArgument("cant form a query without data".to_string()));
+        }
         let cols = if insert_all {
             T::columns()
         } else {
@@ -81,6 +84,11 @@ impl PsInterface {
         }
 
         let res = query.fetch_all(&self.pool).await?;
+
+        if res.first().is_none() {
+            return Err(sqlx::Error::InvalidArgument("no rows were inserted".to_string()));
+        }
+
         Ok(res)
     }
 
