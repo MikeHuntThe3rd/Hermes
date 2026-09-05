@@ -234,8 +234,7 @@ pub async fn manage_friend_invite(
 pub async fn update_message(
     auth: AuthUser,
     State(inf): State<AppState>,
-    Path(group_id): Path<Uuid>,
-    Path(message_id): Path<i32>,
+    Path((group_id, message_id)): Path<(Uuid, i32)>,
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, GenericErr> {
     fetch_group_member(inf.clone(), &group_id, &auth.user_id)

@@ -125,7 +125,7 @@ async fn main() {
 
     let api = Router::new()
     /* ===== Invites ===== */
-    .route("/invite/new_user/{prv_level}", post(create_invite))
+    .route("/invite/new_user", post(create_invite))
     /* ===== Auth ===== */
     .nest("/auth", auth)
     /* ===== Groups ===== */
