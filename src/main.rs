@@ -117,7 +117,7 @@ async fn main() {
 
     let users: Router<AppState> = Router::new()
     .route("/me", delete(delete_self))
-    .route("/me", patch(update_user));
+    .route("/me", patch(update_self));
 
     let objects: Router<AppState> = Router::new()
     .route("/upload", post(upload)).layer(DefaultBodyLimit::max(10000000))

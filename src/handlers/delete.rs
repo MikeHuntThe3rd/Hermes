@@ -1,5 +1,8 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use sqlx::{Postgres, query_as};
+use sqlx::postgres::PgArguments;
+use sqlx::query::QueryAs;
 use uuid::Uuid;
 
 use crate::handlers::fetch_group_member;
@@ -10,6 +13,23 @@ pub async fn delete_self(
     auth: AuthUser,
     State(inf): State<AppState>,
 ) -> Result<Res<()>, InternalError> {
+    let sql: &'static str = "SELECT * FROM groups
+    JOIN group_members gm ON gm.group_id = groups.id
+    WHERE gm.member_id = $1
+    AND gm.rank = $2
+    AND (SELECT COUNT(*) FROM group_members gm2
+        WHERE gm2.group_id = groups.id AND gm2.rank = $2
+    ) = 1;";
+
+    let query: QueryAs<'_, Postgres, Group, PgArguments> = query_as(sql).bind(auth.user_id).bind(RankT::Owner);
+
+    let orphan_groups = inf.ps_interface.generic_fetch(query)
+    .await.map_err(|_| InternalError::DbError)?;
+
+    if !orphan_groups.is_empty() {
+        return Err(InternalError::DetachingOperation);
+    }
+
     let deletes = inf
         .ps_interface
         .delete::<Uuid, User>(&vec![auth.user_id])

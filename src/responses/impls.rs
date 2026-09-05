@@ -119,6 +119,14 @@ impl IntoResponse for InternalError {
                 StatusCode::NOT_FOUND,
                 "this data has no owner and doesn't perimt patch operations",
             ),
+            InternalError::DetachingOperation => (
+                StatusCode::CONFLICT,
+                "this request would cause an unallowed detachment of ownership",
+            ),
+            InternalError::InvalidAccountCredentials => (
+                StatusCode::CONFLICT,
+                "given username and/or password does not follow the standard",
+            ),
         };
 
         let res: Res<()> = Res {

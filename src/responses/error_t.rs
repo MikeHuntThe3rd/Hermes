@@ -24,6 +24,8 @@ pub enum InternalError {
     EmptyMessage,
     DuplicateData,
     DetachedOwner,
+    DetachingOperation,
+    InvalidAccountCredentials,
 }
 
 pub enum GenericErr {

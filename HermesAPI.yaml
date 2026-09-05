@@ -1,9 +1,7 @@
 openapi: 3.0.3
 info:
   title: Hermes API
-  description: >
-    API for authentication, groups, group invites, messaging, and object
-    (file) storage.
+  description: messaging service
   version: 1.0.0
 
 servers:
@@ -382,14 +380,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/UnprivilegedInput'
       responses:
         '200':
           description: User updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
+                $ref: '#/components/schemas/EmptyDataResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -787,6 +785,22 @@ components:
           nullable: true
           description: Object id of the user's profile picture, if set.
 
+    UnprivilegedInput:
+      type: object
+      required: [id, nickname, prv, username, password, pfp]
+      properties:
+        nickname:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        pfp:
+          type: string
+          format: uuid
+          nullable: true
+          description: Object id of the user's profile picture, if set.
+
     UserRelation:
       type: object
       required: [id, nickname, pfp, state]
@@ -1034,14 +1048,6 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/TokenPair'
-
-    UserResponse:
-      allOf:
-        - $ref: '#/components/schemas/EmptyDataResponse'
-        - type: object
-          properties:
-            data:
-              $ref: '#/components/schemas/User'
 
     StrippedUserListResponse:
       allOf:

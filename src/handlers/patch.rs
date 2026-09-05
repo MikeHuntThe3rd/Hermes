@@ -24,20 +24,42 @@ pub struct StatChange {
     pub state: RelationT,
 }
 
-pub async fn update_user(
-    _auth: AuthUser,
+#[derive(Serialize, Deserialize)]
+pub struct UserUpdate {
+    pub nickname: String,
+    pub username: String,
+    pub password: String,
+    pub pfp: Option<Uuid>,
+}
+
+pub async fn update_self(
+    auth: AuthUser,
     State(inf): State<AppState>,
-    Json(data): Json<User>,
-) -> Result<Res<User>, InternalError> {
-    return match inf.ps_interface.update(data).await {
-        Ok(usr) => Ok(Res {
-            status: StatusCode::OK,
-            success: true,
-            msg: String::new(),
-            data: Some(usr),
-        }),
-        Err(_e) => Err(InternalError::DbError),
-    };
+    Json(data): Json<UserUpdate>,
+) -> Result<Res<User>, GenericErr> {
+    if data.nickname.trim().len() < 3 {
+        return Err(GenericErr::Auth(AuthError::InvalidNickname));
+    }
+
+    if data.username.trim().len() < 3 || data.password.trim().len() < 3 {
+        return Err(GenericErr::Internal(InternalError::InvalidAccountCredentials));
+    }
+
+    let old_user: User = inf.ps_interface.select(Some((&["id"], &[auth.user_id])))
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?
+    .into_iter().next().ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    inf.ps_interface.update(User{
+        id: auth.user_id,
+        nickname: data.nickname,
+        prv: old_user.prv,
+        username: data.username,
+        password: data.password,
+        pfp: data.pfp
+    })
+    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
 }
 
 pub async fn update_group(

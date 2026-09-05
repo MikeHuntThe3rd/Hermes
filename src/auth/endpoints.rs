@@ -123,6 +123,10 @@ pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<Si
         return Err(GenericErr::Auth(AuthError::InvalidNickname));
     }
 
+    if data.username.trim().len() < 3 || data.password.trim().len() < 3 {
+        return Err(GenericErr::Internal(InternalError::InvalidAccountCredentials));
+    }
+
     inf.redis_client
     .set::<(), _, _>(&key, 1, Some(fred::types::Expiration::EX(ttl)), None, false)
     .await.map_err(|_| GenericErr::Internal(InternalError::RedisError))?;
