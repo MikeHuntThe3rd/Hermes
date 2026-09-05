@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use crate::types::{AppState, Logging};
 use crate::responses::error_t::InternalError;
 use axum::extract::{FromRef, FromRequestParts};

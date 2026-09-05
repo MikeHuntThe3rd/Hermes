@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use crate::db::*;
 use crate::logging::Logs;
 use axum::http::StatusCode;

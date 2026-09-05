@@ -126,7 +126,7 @@ pub async fn get_messages(
     WHERE messages.group_id = $1
     GROUP BY messages.id;";
 
-    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id).await?;
+    fetch_group_member(inf.clone(), &group_id, &auth.user_id).await?;
 
     let query: QueryAs<'_, Postgres, FullMsg, PgArguments> = sqlx::query_as(sql).bind(group_id);
 

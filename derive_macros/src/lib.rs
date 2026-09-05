@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use proc_macro::{Ident, TokenStream};
+use proc_macro::TokenStream;
 use quote::quote;
 use syn::{self, Data, Expr, Fields, Lit, Meta};
 
@@ -70,7 +70,7 @@ fn implement_trait(vals: &syn::DeriveInput) -> TokenStream {
     }
 
     for col_ident in &all_col_idents {
-        if let Some(id_name) = id_col_names.iter().find(|id_name| id_name.to_string() == col_ident.to_string()) {
+        if id_col_names.iter().find(|id_name| id_name.to_string() == col_ident.to_string()).is_some() {
             id_col_idents.push(col_ident.clone());
             all_col_names.push(col_ident.to_string());
 
@@ -94,7 +94,7 @@ fn implement_trait(vals: &syn::DeriveInput) -> TokenStream {
     let bind_base = quote! { res #(.bind(&self.#base_col_idents))* };
     let bind_all = quote! { res #(.bind(&self.#all_col_idents))* };
 
-    let mut code = quote! {
+    let code = quote! {
         impl Bindable for #name {
             fn table_name() -> &'static str {
                 return #table_name;

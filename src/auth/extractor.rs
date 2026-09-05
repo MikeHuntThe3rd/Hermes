@@ -1,5 +1,5 @@
 use axum::{RequestPartsExt, extract::{FromRef, FromRequestParts}, http::request::Parts};
-use crate::types::{BLACKLIST_STR, INVITES_BLACKLIST_STR, PrivClaims, PrivilegeT};
+use crate::types::{BLACKLIST_STR, INVITES_BLACKLIST_STR, PrivClaims};
 
 use axum_extra::{
     headers::{authorization::Bearer, Authorization},
@@ -7,7 +7,7 @@ use axum_extra::{
 };
 
 use fred::interfaces::KeysInterface;
-use jsonwebtoken::{DecodingKey, TokenData, Validation, decode};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 use uuid::Uuid;
 
 use crate::{responses::error_t::*, types::{AppState, Claims, TokenType}};
