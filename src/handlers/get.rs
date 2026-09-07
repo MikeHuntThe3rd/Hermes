@@ -2,6 +2,7 @@ use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{Response, StatusCode};
 use axum::response::IntoResponse;
+use base64::Engine;
 use sqlx::Postgres;
 use sqlx::postgres::PgArguments;
 use sqlx::query::QueryAs;
@@ -10,13 +11,27 @@ use uuid::Uuid;
 use crate::{auth::extractor::AuthUser, responses::error_t::InternalError};
 use crate::{handlers::*, types::*};
 
-#[derive(Serialize, FromRow)]
+#[derive(FromRow)]
 pub struct FullMsg {
-    id: i32,
-    file_ids: Vec<Uuid>,
-    message: Option<String>,
-    group_id: Uuid,
-    user_id: Option<Uuid>,
+    pub id: i32,
+    pub file_ids: Vec<Uuid>,
+    pub message: Option<String>,
+    pub group_id: Uuid,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Serialize)]
+pub struct Page {
+    pub file_ids: Vec<Uuid>,
+    pub message: Option<String>,
+    pub group_id: Uuid,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct MsgResponse {
+    pub cursor: String,
+    pub pages: Vec<Page>,
 }
 
 pub async fn get_friends(
@@ -114,17 +129,20 @@ pub async fn get_messages(
     auth: AuthUser,
     State(inf): State<AppState>,
     Path(group_id): Path<Uuid>,
-) -> Result<Res<Vec<FullMsg>>, InternalError> {
+) -> Result<Res<MsgResponse>, InternalError> {
     let sql: &'static str = "SELECT 
-        id, 
-        COALESCE(array_agg(message_objects.object_id), '{}'::uuid[]) AS file_ids, 
-        message, 
-        group_id, 
-        user_id 
+        messages.id AS id, 
+        COALESCE(array_agg(message_objects.object_id) 
+        FILTER (WHERE message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS file_ids, 
+        messages.message AS message, 
+        messages.group_id AS group_id, 
+        messages.user_id AS user_id 
     FROM messages 
     LEFT JOIN message_objects ON message_objects.message_id = messages.id
     WHERE messages.group_id = $1
-    GROUP BY messages.id;";
+    GROUP BY messages.id
+    ORDER BY messages.id DESC
+    LIMIT 50;";
 
     fetch_group_member(inf.clone(), &group_id, &auth.user_id).await?;
 
@@ -136,16 +154,40 @@ pub async fn get_messages(
         .await
         .map_err(|_| InternalError::DbError)?;
 
-    if messages.first().is_none() {
+    if let Some(oldest) = messages.last() {
+        let bytes = oldest.id.to_be_bytes();
+        let cursor = EDE.encode(bytes);
+
+        let res = MsgResponse {
+            cursor: cursor,
+            pages: messages
+                .into_iter()
+                .map(
+                    |FullMsg {
+                         id: _,
+                         file_ids,
+                         message,
+                         group_id,
+                         user_id,
+                     }| Page {
+                        file_ids,
+                        message,
+                        group_id,
+                        user_id,
+                    },
+                )
+                .collect(),
+        };
+
+        return Ok(Res {
+            status: StatusCode::FOUND,
+            success: true,
+            msg: String::new(),
+            data: Some(res),
+        });
+    } else {
         return Err(InternalError::NoMatches);
     }
-
-    return Ok(Res {
-        status: StatusCode::FOUND,
-        success: true,
-        msg: String::new(),
-        data: Some(messages),
-    });
 }
 
 pub async fn get_group_invites(

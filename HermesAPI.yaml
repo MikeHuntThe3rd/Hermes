@@ -335,10 +335,10 @@ paths:
         '404':
           description: Group has no members / not found (NoMatches)
 
-  /group/{group_id}/message/all:
+  /group/{group_id}/message/max:
     get:
       tags: [Messages]
-      summary: Get messages for a group
+      summary: Get messages for a group (up to a maximum amount)
       parameters:
         - $ref: '#/components/parameters/GroupId'
       responses:
@@ -876,13 +876,10 @@ components:
           format: uuid
           nullable: true
 
-    Message:
+    MsgPage:
       type: object
-      required: [id, group_id, user_id]
+      required: [group_id, user_id]
       properties:
-        id:
-          type: integer
-          format: int32
         file_ids:
           type: array
           items:
@@ -897,6 +894,18 @@ components:
         user_id:
           type: string
           format: uuid
+
+    MsgPageDataBody:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor:
+          type: string
+          format: base64
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/MsgPage'
 
     StrippedMessage:
       type: object
@@ -1095,9 +1104,7 @@ components:
         - type: object
           properties:
             data:
-              type: array
-              items:
-                $ref: '#/components/schemas/Message'
+              $ref: '#/components/schemas/MsgPageDataBody'
 
     GroupInviteListResponse:
       allOf:

@@ -2,6 +2,10 @@
 use crate::db::*;
 use crate::logging::Logs;
 use axum::http::StatusCode;
+use base64::engine::{
+    GeneralPurpose,
+    general_purpose::{self, URL_SAFE_NO_PAD},
+};
 use derive_macros::Bindable;
 use fred::clients::Client;
 use serde::{Deserialize, Serialize};
@@ -17,6 +21,8 @@ pub const BLACKLIST_STR: &'static str = "jwt:blacklist:";
 pub const INVITES_BLACKLIST_STR: &'static str = "jwt:blacklist:invites:";
 
 pub const PLACE_HOLDER_UUID: Uuid = Uuid::nil();
+
+pub const EDE: GeneralPurpose = URL_SAFE_NO_PAD;
 
 /* ===== TRAITS ===== */
 
