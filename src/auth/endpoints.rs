@@ -41,7 +41,7 @@ pub struct SignupCred {
 pub async fn login(State(inf): State<AppState>, Json(data): Json<LoginCred>) -> Result<Res<UserTokenObj>, GenericErr> {
     let rows: Vec<User> = inf.ps_interface
     .select(Some((&vec!["username", "password"], &vec![&data.username, &data.password])))
-    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+    .await.map_err(|e| GenericErr::Internal(e))?;
 
     if rows.len() == 1 && 
     let Some(frst) = rows.first() && 
@@ -138,7 +138,7 @@ pub async fn sign_up(auth: AuthInvite, inf: State<AppState>, Json(data): Json<Si
         username: data.username, 
         password: data.password, 
         pfp: None }], false)
-    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?
+    .await.map_err(|e| GenericErr::Internal(e))?
     .into_iter().next().ok_or(GenericErr::Internal(InternalError::DbError))?;
 
     let access: String = create_jwt(usr.id, TokenType::Access, &inf.jwt_secret).await.map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;

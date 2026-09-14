@@ -1,4 +1,4 @@
-use crate::{logging::Logs, types::*};
+use crate::{logging::Logs, responses::error_t::InternalError, types::*};
 use sqlx::{
     Encode, FromRow, Pool, Postgres, QueryBuilder, Sqlite,
     postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow},
@@ -34,12 +34,13 @@ impl PsInterface {
         return Ok(PsInterface { pool: conn_pool });
     }
 
-    pub async fn insert<T>(&self, data: &[T], insert_all: bool) -> Result<Vec<T>, sqlx::Error>
+    pub async fn insert<T>(&self, data: &[T], insert_all: bool) -> Result<Vec<T>, InternalError>
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
-        if data.first().is_none() {
-            return Err(sqlx::Error::InvalidArgument("cant form a query without data".to_string()));
+        if data.is_empty() {
+            let _msg = sqlx::Error::InvalidArgument("cant form a query without data".to_string());
+            return Err(InternalError::DbError);
         }
         let cols = if insert_all {
             T::columns()
@@ -83,16 +84,18 @@ impl PsInterface {
             query = generic.bind_values(query, BindVal::BASE);
         }
 
-        let res = query.fetch_all(&self.pool).await?;
+        let res = query.fetch_all(&self.pool)
+        .await.map_err(|_| InternalError::DbError)?;
 
-        if res.first().is_none() {
-            return Err(sqlx::Error::InvalidArgument("no rows were inserted".to_string()));
+        if res.is_empty() {
+            let _msg = sqlx::Error::InvalidArgument("no rows were inserted".to_string());
+            return Err(InternalError::DbError);
         }
 
         Ok(res)
     }
 
-    pub async fn update<T>(&self, data: T) -> Result<T, sqlx::Error>
+    pub async fn update<T>(&self, data: T) -> Result<T, InternalError>
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
@@ -128,11 +131,12 @@ impl PsInterface {
         sql.push(") RETURNING *;");
 
         let query = data.bind_values(sql.build_query_as::<T>(), BindVal::ALL);
-        let res = query.fetch_one(&self.pool).await?;
+        let res = query.fetch_one(&self.pool)
+        .await.map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 
-    pub async fn delete<I, T>(&self, id_s: &[I]) -> Result<Vec<T>, sqlx::Error>
+    pub async fn delete<I, T>(&self, id_s: &[I]) -> Result<Vec<T>, InternalError>
     where
         I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>,
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
@@ -158,11 +162,12 @@ impl PsInterface {
         for val in id_s {
             query = query.bind(val);
         }
-        let res = query.fetch_all(&self.pool).await?;
+        let res = query.fetch_all(&self.pool)
+        .await.map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 
-    pub async fn select<I, T>(&self, id_s: Option<(&[&str], &[I])>) -> Result<Vec<T>, sqlx::Error>
+    pub async fn select<I, T>(&self, id_s: Option<(&[&str], &[I])>) -> Result<Vec<T>, InternalError>
     where
         I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>,
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
@@ -172,9 +177,8 @@ impl PsInterface {
 
         if let Some(some_id_s) = id_s {
             if some_id_s.0.len() != some_id_s.1.len() {
-                return Err(sqlx::Error::InvalidArgument(
-                    "given tuple arrays have different sizes".to_string(),
-                ));
+                let _msg = sqlx::Error::InvalidArgument("given tuple arrays have different sizes".to_string());
+                return Err(InternalError::DbError);
             }
 
             sql.push(" WHERE (");
@@ -196,26 +200,29 @@ impl PsInterface {
             sql.push(";");
         }
 
-        let res = sql.build_query_as::<T>().fetch_all(&self.pool).await?;
+        let res = sql.build_query_as::<T>().fetch_all(&self.pool)
+        .await.map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 
     pub async fn generic_exec(
         &self,
         query: Query<'_, Postgres, PgArguments>,
-    ) -> Result<(), sqlx::Error> {
-        query.execute(&self.pool).await?;
+    ) -> Result<(), InternalError> {
+        query.execute(&self.pool)
+        .await.map_err(|_| InternalError::DbError)?;
         Ok(())
     }
 
     pub async fn generic_fetch<T>(
         &self,
         query: QueryAs<'_, Postgres, T, PgArguments>,
-    ) -> Result<Vec<T>, sqlx::Error>
+    ) -> Result<Vec<T>, InternalError>
     where
         T: for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
-        let res = query.fetch_all(&self.pool).await?;
+        let res = query.fetch_all(&self.pool)
+        .await.map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 }

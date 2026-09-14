@@ -12,6 +12,7 @@ pub enum AuthError {
     NonOwner,
 }
 
+#[derive(Debug)]
 pub enum InternalError {
     DbError,
     RedisError,
