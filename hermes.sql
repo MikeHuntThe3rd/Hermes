@@ -22,9 +22,21 @@ CREATE TABLE "relations" (
 
 CREATE TABLE "groups" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "is_dm" bool NOT NULL
+);
+
+CREATE TABLE "group_meta" (
+  "group_id" uuid PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
   "name" text NOT NULL,
-  "is_dm" bool NOT NULL,
-  "gp" uuid
+  "gp" uuid REFERENCES objects(id) ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE
+);
+
+CREATE TABLE "dms" (
+  "group_id" uuid PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
+  "user_a" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "user_b" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT ordered_pair CHECK (user_a < user_b),
+  UNIQUE (user_a, user_b)
 );
 
 CREATE TABLE "group_invites" (
@@ -71,26 +83,26 @@ ALTER TABLE "users" ADD CONSTRAINT "pfp_link" FOREIGN KEY ("pfp") REFERENCES "ob
 
 ALTER TABLE "groups" ADD CONSTRAINT "gp_link" FOREIGN KEY ("gp") REFERENCES "objects" ("id") ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE;
 
-CREATE OR REPLACE FUNCTION enforce_dm() RETURNS trigger AS $$
-DECLARE
-    is_dm_group boolean;
-    member_count int;
-BEGIN
-    SELECT is_dm INTO is_dm_group FROM groups WHERE id = NEW.group_id;
+-- CREATE OR REPLACE FUNCTION enforce_dm() RETURNS trigger AS $$
+-- DECLARE
+--     is_dm_group boolean;
+--     member_count int;
+-- BEGIN
+--     SELECT is_dm INTO is_dm_group FROM groups WHERE id = NEW.group_id;
 
-    IF is_dm_group THEN
-        SELECT count(*) INTO member_count FROM group_members
-        WHERE group_id = NEW.group_id;
+--     IF is_dm_group THEN
+--         SELECT count(*) INTO member_count FROM group_members
+--         WHERE group_id = NEW.group_id;
 
-        IF member_count >= 2 THEN
-            RAISE EXCEPTION 'DM groups cannot have more than 2 members';
-        END IF;
-    END IF;
+--         IF member_count >= 2 THEN
+--             RAISE EXCEPTION 'DM groups cannot have more than 2 members';
+--         END IF;
+--     END IF;
 
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+--     RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_check_dm_compliance
-BEFORE INSERT ON group_members
-FOR EACH ROW EXECUTE FUNCTION enforce_dm();
+-- CREATE TRIGGER trg_check_dm_compliance
+-- BEFORE INSERT ON group_members
+-- FOR EACH ROW EXECUTE FUNCTION enforce_dm();

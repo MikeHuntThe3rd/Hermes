@@ -110,8 +110,7 @@ pub async fn get_group_members(
     let users: Vec<StrippedMember> = inf
         .ps_interface
         .generic_fetch(query)
-        .await
-        .map_err(|_| InternalError::DbError)?;
+        .await?;
 
     if users.len() < 1 {
         return Err(InternalError::NoMatches);
