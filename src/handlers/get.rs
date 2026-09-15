@@ -64,7 +64,7 @@ pub async fn get_friends(
     });
 }
 
-pub async fn get_groups(
+pub async fn get_guilds(
     auth: AuthUser,
     State(inf): State<AppState>,
 ) -> Result<Res<Vec<Group>>, InternalError> {
@@ -92,15 +92,15 @@ pub async fn get_groups(
     });
 }
 
-pub async fn get_group_members(
+pub async fn get_guild_members(
     _auth: AuthUser,
     State(inf): State<AppState>,
     Path(group_id): Path<Uuid>,
 ) -> Result<Res<Vec<StrippedMember>>, InternalError> {
     let sql: &'static str =
         "SELECT id AS user_id, nickname, pfp, group_members.rank AS rank FROM users 
-    JOIN group_members ON group_members.member_id = users.id 
-    WHERE group_members.group_id = $1;";
+        JOIN group_members ON group_members.member_id = users.id 
+        WHERE group_members.group_id = $1;";
 
     fetch_group(inf.clone(), &group_id).await?;
 
@@ -112,7 +112,7 @@ pub async fn get_group_members(
         .generic_fetch(query)
         .await?;
 
-    if users.len() < 1 {
+    if users.is_empty() {
         return Err(InternalError::NoMatches);
     }
 
@@ -189,11 +189,32 @@ pub async fn get_messages(
     }
 }
 
-pub async fn get_group_invites(
+pub async fn get_guild_invites(
     auth: AuthUser,
     State(inf): State<AppState>,
-) -> Result<Res<Vec<Group_Invite>>, InternalError> {
-    let invs: Vec<Group_Invite> = inf
+) -> Result<Res<Vec<Guild_Invite>>, InternalError> {
+    let invs: Vec<Guild_Invite> = inf
+        .ps_interface
+        .select(Some((&["user_id"], &[auth.user_id])))
+        .await
+        .map_err(|_| InternalError::DbError)?;
+
+    if invs.first().is_none() {
+        return Err(InternalError::NoMatches);
+    }
+    return Ok(Res {
+        status: StatusCode::FOUND,
+        success: true,
+        msg: String::new(),
+        data: Some(invs),
+    });
+}
+
+pub async fn get_dm_invites(
+    auth: AuthUser,
+    State(inf): State<AppState>,
+) -> Result<Res<Vec<Dm_Invite>>, InternalError> {
+    let invs: Vec<Dm_Invite> = inf
         .ps_interface
         .select(Some((&["user_id"], &[auth.user_id])))
         .await

@@ -119,25 +119,26 @@ async fn main() {
         .route("/refresh", post(refresh))
         .route("/sign_up", post(sign_up));
 
-    let dm: Router<AppState> = Router::new().route("/member/{member_id}", post(add_dm));
+    let dm: Router<AppState> = Router::new()
+        .route("/new/member/{member_id}", post(add_dm))
+        .route("/invites", get(get_dm_invites))
+        .route("/invite/{invite_id}", patch(manage_dm_invite))
+        .route("/{group_id}", delete(delete_dm));
 
     let guild: Router<AppState> = Router::new()
         .route("/", post(add_guild))
-        .route("/all", get(get_groups))
-        .route("/invites", get(get_group_invites))
-        .route("/{group_id}/members", get(get_group_members))
-        .route("/{group_id}/invite", post(invite_group_member))
-        .route("/invite/{invite_id}", patch(manage_group_invite))
-        .route("/{group_id}", delete(delete_group))
-        .route("/{group_id}", patch(update_group))
-        .route(
-            "/{group_id}/member/{member_id}",
-            delete(delete_group_member),
-        );
+        .route("/all", get(get_guilds))
+        .route("/invites", get(get_guild_invites))
+        .route("/invite/{invite_id}", patch(manage_guild_invite))
+        .route("/{group_id}/members", get(get_guild_members))
+        .route("/{group_id}/invite", post(invite_guild_member))
+        .route("/{group_id}", delete(delete_guild))
+        .route("/{group_id}", patch(update_guild))
+        .route("/{group_id}/member/{member_id}",delete(delete_guild_member),);
 
     let groups: Router<AppState> = Router::new()
         .nest("/dm", dm)
-        .nest("/guild", dm)
+        .nest("/guild", guild)
         /* ===== Groups ===== */
         .route("/{group_id}/message", post(add_message))
         .route("/{group_id}/message/all", get(get_messages))

@@ -5,12 +5,13 @@ info:
   version: 1.0.0
 
 servers:
-  - url: http://127.0.0.1:8000/apiV1
+  - url: http://127.0.0.1:8080/apiV1
     description: Local development server
 
 tags:
   - name: Auth
-  - name: Groups
+  - name: Guilds
+  - name: DMs
   - name: Invites
   - name: Messages
   - name: Relations
@@ -103,21 +104,24 @@ paths:
         '500':
           description: Db error, Redis error, or JWT encode error
 
-  # ===================== POST =====================
-  /group:
+  # ===================== GUILDS =====================
+  /group/guild:
     post:
-      tags: [Groups]
-      summary: Create a new group
-      description: caller is added as Owner
+      tags: [Guilds]
+      summary: Create a new guild
+      description: >
+        Creates the underlying group plus its guild metadata (name/parent
+        guild); caller is added as Owner. If either the metadata insert or
+        the owner-membership insert fails, the group is rolled back.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/StrippedGroup'
+              $ref: '#/components/schemas/Grp'
       responses:
         '201':
-          description: Group created
+          description: Guild created
           content:
             application/json:
               schema:
@@ -127,40 +131,54 @@ paths:
         '500':
           $ref: '#/components/responses/DbError'
 
-  /group/{group_id}/invite:
-    post:
-      tags: [Invites]
-      summary: Invite a user to a group
-      description: Caller must already be a member with rank equal or greater than the rank being granted; self-invites are rejected
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      requestBody: 
-        required: true
-        content: 
-          application/json: 
-            schema: 
-              $ref: '#/components/schemas/GrpInv'
+  /group/guild/all:
+    get:
+      tags: [Guilds]
+      summary: Get guilds the current user belongs to
+      description: >
+        Returns the bare Group records (id, is_dm) the caller is a member
+        of. Note this endpoint does not currently include the guild's name
+        or parent (`gp`) — those live on the separate guild-metadata table
+        and are not joined in here.
       responses:
-        '201':
-          description: Invite created
+        '200':
+          description: Guilds found (returned with HTTP 302 Found by this handler, not 200)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '400':
-          description: Caller attempted to invite themselves (SelfInvite)
-        '403':
-          description: Caller is not a member of the group, or lacks sufficient rank
+                $ref: '#/components/schemas/GroupListResponse'
+        '302':
+          description: List of groups (this handler returns StatusCode::FOUND rather than 200)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Target user not found
-        '500':
-          $ref: '#/components/responses/DbError'
+          description: No groups found (NoMatches)
 
-  /group/invite/{invite_id}:
+  /group/guild/invites:
+    get:
+      tags: [Invites]
+      summary: Get pending guild invites addressed to the current user
+      responses:
+        '302':
+          description: List of invites (returned with HTTP 302 Found by this handler)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuildInviteListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No invites found (NoMatches)
+
+  /group/guild/invite/{invite_id}:
     patch:
       tags: [Invites]
-      summary: Accept or decline a pending group invite addressed to the caller
-      parameters: 
+      summary: Accept or decline a pending guild invite addressed to the caller
+      parameters:
         - name: invite_id
           in: path
           required: true
@@ -176,8 +194,8 @@ paths:
       responses:
         '200':
           description: >
-            Invite processed. If accepted, the group member is created at the invite's rank. The invite is deleted
-            either way.
+            Invite processed. If accepted, the guild member is created at
+            the invite's rank. The invite is deleted either way.
           content:
             application/json:
               schema:
@@ -189,13 +207,235 @@ paths:
         '500':
           $ref: '#/components/responses/DbError'
 
+  /group/guild/{group_id}/members:
+    get:
+      tags: [Guilds]
+      summary: Get members of a guild
+      description: >
+        returned as a unique group member type which combines the stripped user and their rank in the group
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '302':
+          description: List of group members (returned with HTTP 302 Found by this handler)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupMemberListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Group has no members / not found (NoMatches)
+
+  /group/guild/{group_id}/invite:
+    post:
+      tags: [Invites]
+      summary: Invite a user to a guild
+      description: Caller must already be a member with rank equal or greater than the rank being granted; self-invites are rejected
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrpInv'
+      responses:
+        '201':
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '400':
+          description: Caller attempted to invite themselves (SelfInvite)
+        '403':
+          description: Caller is not a member of the group, or lacks sufficient rank (InvalidPrivilige)
+        '404':
+          description: Target user not found
+        '409':
+          description: An invite for this user to this group already exists (DuplicateData)
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /group/guild/{group_id}:
+    delete:
+      tags: [Guilds]
+      summary: Delete a guild
+      description: can only be called by the group's owner(s)
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: Group deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is a member but not Owner (InvalidPrivilige)
+        '404':
+          description: Group not found, or caller is not a member (NoMatches)
+    patch:
+      tags: [Guilds]
+      summary: Update a guild
+      description: Caller must hold rank Owner in the guild
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StrippedGroup'
+      responses:
+        '200':
+          description: Group updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is a member but not Owner (InvalidPrivilige)
+        '404':
+          description: Caller is not a member of the group (NoMatches)
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /group/guild/{group_id}/member/{member_id}:
+    delete:
+      tags: [Guilds]
+      summary: Remove a member from a guild
+      description: the rank of the caller is required to be higher than the recipient's rank
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '200':
+          description: Group member removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller's rank is not strictly higher than the target's rank (InvalidPrivilige)
+        '404':
+          description: Caller, target, or group member row not found (NoMatches)
+
+  # ===================== DMs =====================
+  /group/dm/new/member/{member_id}:
+    post:
+      tags: [DMs]
+      summary: Start a DM with another user
+      description: >
+        Creates a new group, marks the caller as one side of the DM, and
+        creates a pending DM invite addressed to `member_id`. No request
+        body is taken; the target user is identified purely by the path
+        parameter.
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '201':
+          description: DM group and invite created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Target user not found (NoMatches)
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /group/dm/invites:
+    get:
+      tags: [Invites]
+      summary: Get pending DM invites addressed to the current user
+      responses:
+        '302':
+          description: List of invites (returned with HTTP 302 Found by this handler)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DmInviteListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No invites found (NoMatches)
+
+  /group/dm/invite/{invite_id}:
+    patch:
+      tags: [Invites]
+      summary: Accept or decline a pending DM invite addressed to the caller
+      description: >
+        The pending invite row is always deleted. Note: unlike the guild
+        invite flow, accepting here does not currently attach the caller
+        to the DM record (no `user_b` is set) — it only re-saves the
+        invite row before deleting it, so accepting and declining have the
+        same practical effect at the moment.
+      parameters:
+        - name: invite_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvMng'
+      responses:
+        '200':
+          description: Invite processed and deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Invite not found, or does not belong to the caller
+        '500':
+          $ref: '#/components/responses/DbError'
+
+  /group/dm/{group_id}:
+    delete:
+      tags: [DMs]
+      summary: Delete/leave a DM
+      description: caller must be one of the two participants (user_a or user_b) of the DM
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: DM group deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is not a participant of this DM (InvalidPrivilige)
+        '404':
+          description: DM not found (NoMatches)
+
+  # ===================== MESSAGES =====================
   /group/{group_id}/message:
     post:
       tags: [Messages]
-      summary: Post a new message to a group 
-      description: Requires at least a message body or
-        one attached file. Caller must be a group member with rank >=
-        Admin
+      summary: Post a new message to a group
+      description: >
+        Requires at least a message body or one attached file. Caller must
+        simply be a member of the group — no minimum rank is required.
       parameters:
         - $ref: '#/components/parameters/GroupId'
       requestBody:
@@ -214,16 +454,94 @@ paths:
         '400':
           description: Both message text and file_ids were empty (EmptyMessage)
         '401':
-          description: Token expired (ExpiredToken)
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Caller is not a member of the group
+          description: Caller is not a member of the group (NoMatches)
         '500':
           $ref: '#/components/responses/DbError'
 
+  /group/{group_id}/message/all:
+    get:
+      tags: [Messages]
+      summary: Get the most recent messages for a group
+      description: Returns up to the 50 most recent messages, newest first
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '302':
+          description: List of messages (returned with HTTP 302 Found by this handler)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Group has no messages, or caller is not a member (NoMatches)
+
+  /group/{group_id}/message/{message_id}:
+    delete:
+      tags: [Messages]
+      summary: Delete a message
+      description: >
+        Caller must hold rank Admin or Owner in the group. Note: the
+        message's own author/rank is not consulted — any non-User-rank
+        member may delete any message in the group.
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: Message deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller's rank in the group is User (InvalidPrivilige)
+        '404':
+          description: Message not found (NoMatches)
+    patch:
+      tags: [Messages]
+      summary: Update a message
+      description: >
+        Caller must be a member of the group and must be the original
+        author of the message. Attached files are diffed against the
+        submitted `file_ids` and added/removed accordingly.
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StrippedMessage'
+      responses:
+        '200':
+          description: Message updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is not the message's author (NonOwner)
+        '404':
+          description: Caller is not a member of the group, or the message was not found (NoMatches)
+        '500':
+          description: >
+            Db error, or the message has no associated author to compare
+            against (DetachedOwner)
+
+  # ===================== INVITES (privilege grant) =====================
   /invite/new_user:
     post:
       tags: [Invites]
-      summary: Issue a privilege-grant invite to a possible new user. 
+      summary: Issue a privilege-grant invite to a possible new user.
       description: Caller must currently hold Proprietor privilege.
       requestBody:
         required: true
@@ -241,23 +559,24 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Caller does not hold Proprietor privilege
+          description: Caller does not hold Proprietor privilege (InvalidPrivilige)
         '404':
           description: Caller's user record not found
         '500':
           description: Db error or JWT encode error
 
-  # ===================== GET =====================
+  # ===================== RELATIONS =====================
   /relation/friends:
     get:
       tags: [Relations]
       summary: Get the current user's relations
       description: this endpoint doesn't return users whom you still have pending invites for, only friends
       responses:
-        '200':
+        '302':
           description: >
-            List of relations. Each entry includes `state` (Friends or
-            Blocked) so the caller can distinguish the two.
+            List of relations (returned with HTTP 302 Found by this
+            handler). Each entry includes `state` (Friends or Blocked) so
+            the caller can distinguish the two.
           content:
             application/json:
               schema:
@@ -283,77 +602,134 @@ paths:
         '404':
           description: No friend requests found (NoMatches)
 
-  /group/all:
-    get:
-      tags: [Groups]
-      summary: Get groups the current user belongs to
-      responses:
-        '200':
-          description: List of groups
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GroupListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No groups found (NoMatches)
-
-  /group/invites:
-    get:
+  /relation/{user_id}/invite:
+    post:
       tags: [Invites]
-      summary: Get pending group invites addressed to the current user
+      summary: Invite a user to be your friend
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
-          description: List of invites
+          description: Empty return on success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GroupInviteListResponse'
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '400':
+          description: Caller attempted to friend-request themselves (SelfInvite)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is blocked by the target user, or has blocked them (UserUnreachable)
+        '404':
+          description: user not found (NoMatches)
+        '409':
+          description: A relation already exists between caller and target (DuplicateData)
+
+  /relation/invite/{user_id}:
+    patch:
+      tags: [Invites]
+      summary: Accept or decline a pending friend request from another user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvMng'
+      responses:
+        '200':
+          description: >
+            Request processed. If accepted, mirrored 'Friends' rows are
+            created for both users. The pending request row is deleted
+            either way.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: No invites found (NoMatches)
+          description: >
+            Request not found, does not belong to the caller, or is not
+            in the Pending state (NoMatches)
 
-  /group/{group_id}/members:
-    get:
-      tags: [Groups]
-      summary: Get members of a group
+  /relation/{user_id}:
+    patch:
+      tags: [Relations]
+      summary: Update a relation
       description: >
-        returned as a unique group member type which combines the stripped user and their rank in the group
+        Sets the relation's state directly to whatever is passed (e.g. to
+        Blocked, or back to Pending/Friends). Caller must already have a
+        relation row with the target user.
       parameters:
-        - $ref: '#/components/parameters/GroupId'
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationStatus'
       responses:
         '200':
-          description: List of group members
+          description: Relation updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GroupMemberListResponse'
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '400':
+          description: Caller targeted themselves (SelfInvite)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Group has no members / not found (NoMatches)
-
-  /group/{group_id}/message/max:
-    get:
-      tags: [Messages]
-      summary: Get messages for a group (up to a maximum amount)
+          description: No existing relation between caller and the given user (NoMatches)
+        '500':
+          $ref: '#/components/responses/DbError'
+    delete:
+      tags: [Relations]
+      summary: Remove the caller's relation to a user
+      description: >
+        Tears down whatever relation currently exists between the caller and the given user
       parameters:
-        - $ref: '#/components/parameters/GroupId'
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
-          description: List of messages
+          description: Relation removed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MessageListResponse'
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '400':
+          description: Caller targeted themselves (SelfInvite)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Group has no messages / not found (NoMatches)
+          description: No relation exists between caller and the given user (NoMatches)
+        '500':
+          $ref: '#/components/responses/DbError'
 
-  # ===================== DELETE =====================
+  # ===================== USERS =====================
   /user/me:
     delete:
       tags: [Users]
@@ -371,7 +747,7 @@ paths:
         '404':
           description: No matching user (NoMatches)
         '409':
-          description: Caller is the last Owner of one or more groups (LastOwner)
+          description: Caller is the last Owner of one or more groups (DetachingOperation)
     patch:
       tags: [Users]
       summary: Update the current user's profile
@@ -388,179 +764,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  /relation/{user_id}:
-    patch:
-      tags: [Relations]
-      summary: Update a relation
-      description: >
-        caller must have a relation of Friend or Blocked with the related user
-      parameters: 
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RelationStatus'
-      responses:
-        '200':
-          description: User blocked
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
+        '400':
+          description: >
+            nickname was shorter than 3 characters after trimming
+            (InvalidNickname), or username/password was shorter than 3
+            characters after trimming (InvalidAccountCredentials)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Provided user couldn't be found (NoMatches)
-        '500':
-          $ref: '#/components/responses/DbError'
-    delete:
-      tags: [Relations]
-      summary: Remove the caller's relation to a user
-      description: >
-        Tears down whatever relation currently exists between the caller and the given user
-      parameters: 
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Relation removed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No relation exists between caller and the given user (NoMatches)
+          description: Caller's user record not found (NoMatches)
         '500':
           $ref: '#/components/responses/DbError'
 
-  /group/{group_id}:
-    delete:
-      tags: [Groups]
-      summary: Delete a group
-      description: can only be called by the group's owner(s)
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      responses:
-        '200':
-          description: Group deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          description: Missing, invalid, or expired bearer token, or unsatisfactory privileges
-        '404':
-          description: Group not found (NoMatches)
-    patch:
-      tags: [Groups]
-      summary: Update a group
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StrippedGroup'
-      responses:
-        '200':
-          description: Group updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  /group/{group_id}/member/{member_id}:
-    delete:
-      tags: [Groups]
-      summary: Remove a member from a group
-      description: the privilege of the caller is required to be higher than the recipient. Additionally calling this endpoint on the last owner of the group will cause it to fail
-      parameters: 
-        - $ref: '#/components/parameters/GroupId'
-        - $ref: '#/components/parameters/MemberId'
-      responses:
-        '200':
-          description: Group member removed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          description: Missing, invalid, or expired bearer token, or unsatisfactory privileges
-        '404':
-          description: Group member not found (NoMatches)
-        '409':
-          description: Target is the last remaining Owner of the group (LastOwner)
-
-  /group/{group_id}/message/{message_id}:
-    delete:
-      tags: [Messages]
-      summary: Delete a message
-      description: if the message has an associated user the caller needs to have a higher rank than the recipient
-      parameters: 
-        - $ref: '#/components/parameters/GroupId'
-        - $ref: '#/components/parameters/MessageId'
-      responses:
-        '200':
-          description: Message deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Message not found (NoMatches)
-    patch:
-      tags: [Messages]
-      summary: Update a message
-      parameters: 
-        - $ref: '#/components/parameters/GroupId'
-        - $ref: '#/components/parameters/MessageId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StrippedMessage'
-      responses:
-        '200':
-          description: Message updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/DbError'
-
+  # ===================== OBJECTS =====================
   /object/upload:
     post:
       tags: [Objects]
-      summary: Upload one or more files as multipart fields 
+      summary: Upload one or more files as multipart fields
       description: (deduplicated by SHA-256 hash) Body capped at 10MB.
       requestBody:
         required: true
@@ -624,67 +844,6 @@ paths:
         '404':
           description: Object not found (NoMatches)
 
-  /relation/{user_id}/invite:
-    post:
-      tags: [Invites]
-      summary: Invite a user to be your friend
-      parameters: 
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '201':
-          description: Empty return on success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '400':
-          description: Caller attempted to friend-request themselves (SelfInvite)
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Caller is blocked by the target user, or has blocked them
-        '404':
-          description: user not found (NoMatches)
-        '409':
-          description: A relation already exists between caller and target (AlreadyRelated)
-
-  /relation/invite/{user_id}:
-    patch:
-      tags: [Invites]
-      summary: Accept or decline a pending friend request from another user
-      parameters: 
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody: 
-        required: true
-        content: 
-          application/json: 
-            schema: 
-              $ref: '#/components/schemas/InvMng'
-      responses:
-        '200':
-          description: >
-            Request processed. If accepted, mirrored 'Friends' rows are
-            created for both users. The pending request row is deleted
-            either way.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Request not found, or does not belong to the caller (NoMatches)
-
 components:
   securitySchemes:
     bearerAuth:
@@ -701,7 +860,7 @@ components:
       bearerFormat: JWT
       description: >
         Privilege-grant invite JWT (PrivClaims { priv_level, jti, iat,
-        exp }) issued by POST /create_invite, validated by the AuthInvite
+        exp }) issued by POST /invite/new_user, validated by the AuthInvite
         extractor. Used only by /auth/sign_up — distinct from the regular
         access-token bearerAuth scheme used elsewhere.
   parameters:
@@ -787,14 +946,17 @@ components:
 
     UnprivilegedInput:
       type: object
-      required: [id, nickname, prv, username, password, pfp]
+      required: [nickname, username, password]
       properties:
         nickname:
           type: string
+          description: Must be at least 3 characters after trimming.
         username:
           type: string
+          description: Must be at least 3 characters after trimming.
         password:
           type: string
+          description: Must be at least 3 characters after trimming.
         pfp:
           type: string
           format: uuid
@@ -849,11 +1011,39 @@ components:
 
     Group:
       type: object
-      required: [id, name, is_dm]
+      required: [id, is_dm]
+      description: >
+        The bare group record. Guild display metadata (name, parent guild)
+        lives separately and is not part of this entity.
       properties:
         id:
           type: string
           format: uuid
+        is_dm:
+          type: boolean
+          description: >
+            Intended to distinguish DM groups from guilds, but both the
+            guild-creation and DM-creation code paths currently set this
+            to false, so it cannot be relied on to tell them apart today.
+
+    Grp:
+      type: object
+      required: [name]
+      description: Request body for creating a new guild.
+      properties:
+        name:
+          type: string
+        gp:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional id of a parent guild.
+
+    StrippedGroup:
+      type: object
+      required: [name, is_dm, gp]
+      description: Request body for updating an existing guild's metadata.
+      properties:
         name:
           type: string
         is_dm:
@@ -863,18 +1053,20 @@ components:
           format: uuid
           nullable: true
 
-    StrippedGroup:
+    Dm_Invite:
       type: object
-      required: [id, name, is_dm]
+      required: [id, group_id, user_id]
       properties:
-        name:
-          type: string
-        is_dm:
-          type: boolean
-        gp:
+        id:
           type: string
           format: uuid
-          nullable: true
+        group_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+          description: The invited user.
 
     MsgPage:
       type: object
@@ -909,17 +1101,18 @@ components:
 
     StrippedMessage:
       type: object
+      required: [file_ids]
       properties:
         message:
           type: string
           nullable: true
         file_ids:
           type: array
-          items: 
+          items:
             type: string
             format: uuid
 
-    Group_Invite:
+    Guild_Invite:
       type: object
       required: [id, group_id, user_id, rank]
       properties:
@@ -935,7 +1128,7 @@ components:
         rank:
           $ref: '#/components/schemas/RankT'
 
-    # ---- Request bodies (from post.rs) ----
+    # ---- Request bodies (from post.rs / patch.rs) ----
     GrpInv:
       type: object
       required: [user_id, rank]
@@ -953,10 +1146,10 @@ components:
         accept:
           type: boolean
       description: >
-        Used by both PATCH /group/invite/{invite_id} and
-        PATCH /relation/invite/{user_id} — the invite/request being managed
-        is identified entirely by the path parameter, so no invite payload
-        is carried in the body.
+        Used by PATCH /group/guild/invite/{invite_id}, PATCH
+        /group/dm/invite/{invite_id}, and PATCH /relation/invite/{user_id}
+        — the invite/request being managed is identified entirely by the
+        path parameter, so no invite payload is carried in the body.
 
     Msg:
       type: object
@@ -1067,7 +1260,7 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/StrippedUser'
-    
+
     RelationsListResponse:
       allOf:
         - $ref: '#/components/schemas/EmptyDataResponse'
@@ -1106,7 +1299,7 @@ components:
             data:
               $ref: '#/components/schemas/MsgPageDataBody'
 
-    GroupInviteListResponse:
+    GuildInviteListResponse:
       allOf:
         - $ref: '#/components/schemas/EmptyDataResponse'
         - type: object
@@ -1114,7 +1307,17 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/Group_Invite'
+                $ref: '#/components/schemas/Guild_Invite'
+
+    DmInviteListResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Dm_Invite'
 
     InvJwtResponse:
       allOf:

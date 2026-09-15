@@ -116,7 +116,7 @@ pub async fn add_dm(
         .insert::<Group>(
             &[Group {
                 id: PLACE_HOLDER_UUID,
-                is_dm: false,
+                is_dm: true,
             }],
             false,
         )
@@ -230,7 +230,7 @@ pub async fn add_message(
     });
 }
 
-pub async fn invite_group_member(
+pub async fn invite_guild_member(
     auth: AuthUser,
     State(inf): State<AppState>,
     Path(group_id): Path<Uuid>,

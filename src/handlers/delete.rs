@@ -48,12 +48,12 @@ pub async fn delete_self(
     }
 }
 
-pub async fn delete_group(
+pub async fn delete_guild(
     auth: AuthUser,
     State(inf): State<AppState>,
     Path(group_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
-    let rank: Group_Member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    let rank: Guild_Member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
@@ -65,9 +65,9 @@ pub async fn delete_group(
         .ps_interface
         .delete::<Uuid, Group>(&vec![group_id])
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
-    if deletes.len() >= 1 {
+    if !deletes.is_empty() {
         return Ok(Res {
             status: StatusCode::OK,
             success: true,
@@ -79,7 +79,40 @@ pub async fn delete_group(
     }
 }
 
-pub async fn delete_group_member(
+pub async fn delete_dm(
+    auth: AuthUser,
+    State(inf): State<AppState>,
+    Path(group_id): Path<Uuid>,
+) -> Result<Res<()>, GenericErr> {
+    let dm: Dm = inf.ps_interface.select(Some((&["group_id"], &[group_id])))
+    .await.map_err(|e| GenericErr::Internal(e))?
+    .into_iter()
+    .next()
+    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    if Some(auth.user_id) != dm.user_a && Some(auth.user_id) != dm.user_b {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
+    }
+
+    let deletes = inf
+        .ps_interface
+        .delete::<Uuid, Group>(&vec![group_id])
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
+
+    if !deletes.is_empty() {
+        return Ok(Res {
+            status: StatusCode::OK,
+            success: true,
+            msg: String::new(),
+            data: None,
+        });
+    } else {
+        return Err(GenericErr::Internal(InternalError::NoMatches));
+    }
+}
+
+pub async fn delete_guild_member(
     auth: AuthUser,
     State(inf): State<AppState>,
     Path(group_id): Path<Uuid>,
@@ -96,7 +129,7 @@ pub async fn delete_group_member(
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    let deletes: Vec<Group_Member> = inf
+    let deletes: Vec<Guild_Member> = inf
         .ps_interface
         .delete(&vec![group_id, member_id])
         .await

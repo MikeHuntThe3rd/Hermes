@@ -62,7 +62,7 @@ pub async fn update_self(
     return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
 }
 
-pub async fn update_group(
+pub async fn update_guild(
     auth: AuthUser,
     State(inf): State<AppState>,
     Path(group_id): Path<Uuid>,
@@ -77,10 +77,9 @@ pub async fn update_group(
     }
 
     inf.ps_interface
-        .update(Group {
-            id: group_id,
+        .update(Guild {
+            group_id: group_id,
             name: data.name,
-            is_dm: data.is_dm,
             gp: data.gp,
         })
         .await
@@ -133,19 +132,19 @@ pub async fn update_relation(
     });
 }
 
-pub async fn manage_group_invite(
+pub async fn manage_guild_invite(
     auth: AuthUser,
     State(inf): State<AppState>,
     Path(invite_id): Path<Uuid>,
     Json(data): Json<InvMng>,
 ) -> Result<Res<()>, InternalError> {
-    let invs: Vec<Group_Invite> = inf
+    let invs: Vec<Guild_Invite> = inf
         .ps_interface
         .select(Some((&["id"], &[invite_id])))
         .await
         .map_err(|_| InternalError::DbError)?;
 
-    let inv: Group_Invite = invs.into_iter().next().ok_or(InternalError::NoMatches)?;
+    let inv: Guild_Invite = invs.into_iter().next().ok_or(InternalError::NoMatches)?;
 
     if inv.user_id != auth.user_id {
         return Err(InternalError::NoMatches);
@@ -153,22 +152,61 @@ pub async fn manage_group_invite(
 
     if data.accept {
         inf.ps_interface
-            .insert::<Group_Member>(
-                &[Group_Member {
+            .insert::<Guild_Member>(
+                &[Guild_Member {
                     group_id: inv.group_id,
                     member_id: inv.user_id,
                     rank: inv.rank,
                 }],
                 true,
             )
-            .await
-            .map_err(|_| InternalError::DbError)?;
+            .await?;
     }
 
     inf.ps_interface
-        .delete::<Uuid, Group_Invite>(&[inv.id])
+        .delete::<Uuid, Guild_Invite>(&[inv.id])
+        .await?;
+
+    return Ok(Res {
+        status: StatusCode::OK,
+        success: true,
+        msg: String::new(),
+        data: None,
+    });
+}
+
+pub async fn manage_dm_invite(
+    auth: AuthUser,
+    State(inf): State<AppState>,
+    Path(invite_id): Path<Uuid>,
+    Json(data): Json<InvMng>,
+) -> Result<Res<()>, InternalError> {
+    let invs: Vec<Dm_Invite> = inf
+        .ps_interface
+        .select(Some((&["id"], &[invite_id])))
         .await
         .map_err(|_| InternalError::DbError)?;
+
+    let inv: Dm_Invite = invs.into_iter().next().ok_or(InternalError::NoMatches)?;
+
+    if inv.user_id != auth.user_id {
+        return Err(InternalError::NoMatches);
+    }
+
+    if data.accept {
+        inf.ps_interface
+            .update::<Dm_Invite>(
+                Dm_Invite { 
+                    id: inv.id, 
+                    group_id: inv.group_id, 
+                    user_id: auth.user_id 
+                })
+        .await?;
+    }
+
+    inf.ps_interface
+        .delete::<Uuid, Dm_Invite>(&[inv.id])
+        .await?;
 
     return Ok(Res {
         status: StatusCode::OK,
