@@ -114,9 +114,49 @@ pub struct User {
 #[ids = "id"]
 pub struct Group {
     pub id: Uuid,
-    pub name: String,
     pub is_dm: bool,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "group_id"]
+pub struct Guild {
+    pub group_id: Uuid,
+    pub name: String,
     pub gp: Option<Uuid>,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "group_id"]
+pub struct Dm {
+    pub group_id: Uuid,
+    pub user_a: Uuid,
+    pub user_b: Uuid,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "id"]
+pub struct Guild_Invite {
+    pub id: Uuid,
+    pub group_id: Uuid,
+    pub user_id: Uuid,
+    pub rank: RankT,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "id"]
+pub struct Dm_Invite {
+    pub id: Uuid,
+    pub group_id: Uuid,
+    pub user_id: Uuid,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "group_id;member_id"]
+#[include_ids(true)]
+pub struct Guild_Member {
+    pub group_id: Uuid,
+    pub member_id: Uuid,
+    pub rank: RankT,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
@@ -137,24 +177,6 @@ pub struct Object {
     pub mime_type: String,
     pub size_bytes: i64,
     pub creation_timestamp: i64,
-}
-
-#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
-#[ids = "group_id;member_id"]
-#[include_ids(true)]
-pub struct Group_Member {
-    pub group_id: Uuid,
-    pub member_id: Uuid,
-    pub rank: RankT,
-}
-
-#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
-#[ids = "id"]
-pub struct Group_Invite {
-    pub id: Uuid,
-    pub group_id: Uuid,
-    pub user_id: Uuid,
-    pub rank: RankT,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]

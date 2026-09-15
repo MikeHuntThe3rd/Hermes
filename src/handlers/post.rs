@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::{creation::create_priv_jwt, extractor::AuthUser},
-    handlers::{fetch_group_member, Msg},
+    handlers::{Msg, fetch_group_member},
     responses::error_t::{AuthError, GenericErr, InternalError},
     types::*,
 };
@@ -44,7 +44,7 @@ pub struct Grp {
     pub gp: Option<Uuid>,
 }
 
-pub async fn add_group(
+pub async fn add_guild(
     auth: AuthUser,
     State(inf): State<AppState>,
     Json(data): Json<Grp>,
@@ -54,28 +54,73 @@ pub async fn add_group(
         .insert::<Group>(
             &[Group {
                 id: PLACE_HOLDER_UUID,
-                name: data.name,
                 is_dm: data.is_dm,
-                gp: data.gp,
-            }],false,)
-        .await
-        .map_err(|_| InternalError::DbError)?
-        .into_iter().next().ok_or(InternalError::DbError)?;
+            }],
+            false,
+        )
+        .await?
+        .into_iter()
+        .next()
+        .expect("the insert function errors if nothing is inserted");
 
     let member = inf
         .ps_interface
-        .insert::<Group_Member>(
-            &[Group_Member {
+        .insert::<Guild_Member>(
+            &[Guild_Member {
                 group_id: group.id,
                 member_id: auth.user_id,
                 rank: RankT::Owner,
-            }],true).await;
+            }],
+            true,
+        )
+        .await;
 
     if member.is_err() {
-        inf.ps_interface
-            .delete::<Uuid, Group>(&[group.id])
-            .await
-            .map_err(|_| InternalError::DbError)?;
+        inf.ps_interface.delete::<Uuid, Group>(&[group.id]).await?;
+        return Err(InternalError::DbError);
+    }
+
+    return Ok(Res {
+        status: StatusCode::CREATED,
+        success: true,
+        msg: String::new(),
+        data: None,
+    });
+}
+
+pub async fn add_dm(
+    auth: AuthUser,
+    State(inf): State<AppState>,
+    Json(data): Json<Grp>,
+) -> Result<Res<()>, InternalError> {
+    let group = inf
+        .ps_interface
+        .insert::<Group>(
+            &[Group {
+                id: PLACE_HOLDER_UUID,
+                is_dm: data.is_dm,
+            }],
+            false,
+        )
+        .await?
+        .into_iter()
+        .next()
+        .expect("the insert function errors if nothing is inserted");
+
+    let member = inf
+        .ps_interface
+        .insert::<Guild_Member>(
+            &[Guild_Member {
+                group_id: group.id,
+                member_id: auth.user_id,
+                rank: RankT::Owner,
+            }],
+            true,
+        )
+        .await;
+
+    if member.is_err() {
+        inf.ps_interface.delete::<Uuid, Group>(&[group.id]).await?;
         return Err(InternalError::DbError);
     }
 
@@ -97,8 +142,7 @@ pub async fn add_message(
         return Err(GenericErr::Internal(InternalError::EmptyMessage));
     }
 
-    inf
-        .ps_interface
+    inf.ps_interface
         .select::<Uuid, Group_Member>(Some((
             &["group_id", "member_id"],
             &[group_id, auth.user_id],
@@ -109,7 +153,6 @@ pub async fn add_message(
         .next()
         .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
-
     let msg: Message = inf
         .ps_interface
         .insert(
@@ -118,10 +161,14 @@ pub async fn add_message(
                 message: data.message,
                 group_id: group_id,
                 user_id: Some(auth.user_id),
-            }], false)
+            }],
+            false,
+        )
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?
-        .into_iter().next().ok_or(GenericErr::Internal(InternalError::DbError))?;
+        .into_iter()
+        .next()
+        .ok_or(GenericErr::Internal(InternalError::DbError))?;
 
     for file_id in data.file_ids {
         let msg_obj = inf
@@ -251,11 +298,14 @@ pub async fn create_friend_invite(
     }
 
     inf.ps_interface
-        .insert::<Relation>( &[Relation {
+        .insert::<Relation>(
+            &[Relation {
                 relating_user: auth.user_id,
                 related_user: user_id,
                 state: RelationT::Pending,
-            }],true,)
+            }],
+            true,
+        )
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -423,7 +473,9 @@ pub async fn upload(
                 }
                 InternalError::DbError
             })?
-            .into_iter().next().ok_or(InternalError::DbError)?;
+            .into_iter()
+            .next()
+            .ok_or(InternalError::DbError)?;
 
         objs.ids.push(obj.id);
     }

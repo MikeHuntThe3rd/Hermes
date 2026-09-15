@@ -25,7 +25,7 @@ CREATE TABLE "groups" (
   "is_dm" bool NOT NULL
 );
 
-CREATE TABLE "group_meta" (
+CREATE TABLE "guilds" (
   "group_id" uuid PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
   "name" text NOT NULL,
   "gp" uuid REFERENCES objects(id) ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE
@@ -33,20 +33,25 @@ CREATE TABLE "group_meta" (
 
 CREATE TABLE "dms" (
   "group_id" uuid PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
-  "user_a" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  "user_b" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT ordered_pair CHECK (user_a < user_b),
+  "user_a" uuid  REFERENCES users(id) ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE,
+  "user_b" uuid  REFERENCES users(id) ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE,
   UNIQUE (user_a, user_b)
 );
 
-CREATE TABLE "group_invites" (
+CREATE TABLE "guild_invites" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "group_id" uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   "rank" rank_t NOT NULL
 );
 
-CREATE TABLE "group_members" (
+CREATE TABLE "dm_invites" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "group_id" uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+);
+
+CREATE TABLE "guild_members" (
   "group_id" uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   "member_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   "rank" rank_t NOT NULL,
@@ -83,26 +88,16 @@ ALTER TABLE "users" ADD CONSTRAINT "pfp_link" FOREIGN KEY ("pfp") REFERENCES "ob
 
 ALTER TABLE "groups" ADD CONSTRAINT "gp_link" FOREIGN KEY ("gp") REFERENCES "objects" ("id") ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE;
 
--- CREATE OR REPLACE FUNCTION enforce_dm() RETURNS trigger AS $$
--- DECLARE
---     is_dm_group boolean;
---     member_count int;
--- BEGIN
---     SELECT is_dm INTO is_dm_group FROM groups WHERE id = NEW.group_id;
+CREATE OR REPLACE FUNCTION dm_cleanup() RETURNS trigger AS $$
+DECLARE
+BEGIN
+    IF NEW.user_a IS NULL AND NEW.user_b IS NULL THEN
+	DELETE FROM groups WHERE groups.id = NEW.group_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
 
---     IF is_dm_group THEN
---         SELECT count(*) INTO member_count FROM group_members
---         WHERE group_id = NEW.group_id;
-
---         IF member_count >= 2 THEN
---             RAISE EXCEPTION 'DM groups cannot have more than 2 members';
---         END IF;
---     END IF;
-
---     RETURN NEW;
--- END;
--- $$ LANGUAGE plpgsql;
-
--- CREATE TRIGGER trg_check_dm_compliance
--- BEFORE INSERT ON group_members
--- FOR EACH ROW EXECUTE FUNCTION enforce_dm();
+CREATE TRIGGER trg_check_dm_state
+BEFORE UPDATE OR INSERT ON dms
+FOR EACH ROW EXECUTE FUNCTION dm_cleanup();
