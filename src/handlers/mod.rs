@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     responses::error_t::InternalError,
-    types::{Group, Group_Member, RankT},
+    types::{Group, Guild_Member, RankT},
 };
 
 #[derive(Serialize, Deserialize, FromRow)]
@@ -57,8 +57,8 @@ pub async fn fetch_group_member(
     inf: AppState,
     group_id: &Uuid,
     member_id: &Uuid,
-) -> Result<Group_Member, InternalError> {
-    let groups: Vec<Group_Member> = inf
+) -> Result<Guild_Member, InternalError> {
+    let groups: Vec<Guild_Member> = inf
         .ps_interface
         .select(Some((&["group_id", "member_id"], &[group_id, member_id])))
         .await

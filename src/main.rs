@@ -122,7 +122,7 @@ async fn main() {
     let groups: Router<AppState> = Router::new()
         /* ===== Groups ===== */
         .route("/guild", post(add_guild))
-        .route("/dm", post(add_dm))
+        .route("/dm/memeber/{member_id}", post(add_dm))
         .route("/all", get(get_groups))
         .route("/invites", get(get_group_invites))
         .route("/{group_id}/members", get(get_group_members))

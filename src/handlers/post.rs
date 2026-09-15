@@ -40,7 +40,6 @@ pub struct GrpInv {
 #[derive(Serialize, Deserialize)]
 pub struct Grp {
     pub name: String,
-    pub is_dm: bool,
     pub gp: Option<Uuid>,
 }
 
@@ -54,7 +53,7 @@ pub async fn add_guild(
         .insert::<Group>(
             &[Group {
                 id: PLACE_HOLDER_UUID,
-                is_dm: data.is_dm,
+                is_dm: false,
             }],
             false,
         )
@@ -62,6 +61,18 @@ pub async fn add_guild(
         .into_iter()
         .next()
         .expect("the insert function errors if nothing is inserted");
+
+    let meta = inf
+        .ps_interface
+        .insert(
+            &[Guild {
+                group_id: group.id,
+                name: data.name,
+                gp: data.gp,
+            }],
+            true,
+        )
+        .await;
 
     let member = inf
         .ps_interface
@@ -75,7 +86,7 @@ pub async fn add_guild(
         )
         .await;
 
-    if member.is_err() {
+    if member.is_err() || meta.is_err() {
         inf.ps_interface.delete::<Uuid, Group>(&[group.id]).await?;
         return Err(InternalError::DbError);
     }
@@ -91,14 +102,21 @@ pub async fn add_guild(
 pub async fn add_dm(
     auth: AuthUser,
     State(inf): State<AppState>,
-    Json(data): Json<Grp>,
+    Path(member_id): Path<Uuid>,
 ) -> Result<Res<()>, InternalError> {
+    inf.ps_interface
+        .select::<Uuid, User>(Some((&["id"], &[member_id])))
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(InternalError::NoMatches)?;
+
     let group = inf
         .ps_interface
         .insert::<Group>(
             &[Group {
                 id: PLACE_HOLDER_UUID,
-                is_dm: data.is_dm,
+                is_dm: false,
             }],
             false,
         )
@@ -107,19 +125,31 @@ pub async fn add_dm(
         .next()
         .expect("the insert function errors if nothing is inserted");
 
-    let member = inf
+    let dm = inf
         .ps_interface
-        .insert::<Guild_Member>(
-            &[Guild_Member {
-                group_id: group.id,
-                member_id: auth.user_id,
-                rank: RankT::Owner,
+        .insert::<Dm>(
+            &[Dm {
+                group_id: PLACE_HOLDER_UUID,
+                user_a: Some(auth.user_id),
+                user_b: None,
             }],
-            true,
+            false,
         )
         .await;
 
-    if member.is_err() {
+    let invite = inf
+        .ps_interface
+        .insert(
+            &[Dm_Invite {
+                id: PLACE_HOLDER_UUID,
+                group_id: group.id,
+                user_id: member_id,
+            }],
+            false,
+        )
+        .await;
+
+    if dm.is_err() || invite.is_err() {
         inf.ps_interface.delete::<Uuid, Group>(&[group.id]).await?;
         return Err(InternalError::DbError);
     }
@@ -143,12 +173,12 @@ pub async fn add_message(
     }
 
     inf.ps_interface
-        .select::<Uuid, Group_Member>(Some((
+        .select::<Uuid, Guild_Member>(Some((
             &["group_id", "member_id"],
             &[group_id, auth.user_id],
         )))
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?
+        .map_err(|e| GenericErr::Internal(e))?
         .into_iter()
         .next()
         .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
@@ -210,7 +240,7 @@ pub async fn invite_group_member(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let invs: Vec<Group_Invite> = inf
+    let invs: Vec<Guild_Invite> = inf
         .ps_interface
         .select(Some((&["group_id", "user_id"], &[group_id, data.user_id])))
         .await
@@ -238,7 +268,7 @@ pub async fn invite_group_member(
         return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 
-    let inv = Group_Invite {
+    let inv = Guild_Invite {
         id: PLACE_HOLDER_UUID,
         group_id: group_id,
         user_id: data.user_id,

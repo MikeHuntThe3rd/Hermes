@@ -129,8 +129,8 @@ pub struct Guild {
 #[ids = "group_id"]
 pub struct Dm {
     pub group_id: Uuid,
-    pub user_a: Uuid,
-    pub user_b: Uuid,
+    pub user_a: Option<Uuid>,
+    pub user_b: Option<Uuid>,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
