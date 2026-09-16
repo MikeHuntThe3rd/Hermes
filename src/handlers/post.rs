@@ -1,3 +1,5 @@
+use std::any::TypeId;
+
 use axum::{
     Json,
     extract::{Multipart, Path, State},
@@ -168,20 +170,46 @@ pub async fn add_message(
     Path(group_id): Path<Uuid>,
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, GenericErr> {
-    if data.file_ids.first().is_none() && data.message.is_none() {
+    if data.file_ids.is_empty() && data.message.is_none() {
         return Err(GenericErr::Internal(InternalError::EmptyMessage));
     }
 
-    inf.ps_interface
-        .select::<Uuid, Guild_Member>(Some((
-            &["group_id", "member_id"],
-            &[group_id, auth.user_id],
-        )))
-        .await
-        .map_err(|e| GenericErr::Internal(e))?
-        .into_iter()
-        .next()
-        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+    let group: Group = inf.ps_interface.select(Some((&["id"], &[group_id])))
+    .await
+    .map_err(|e| GenericErr::Internal(e))?
+    .into_iter()
+    .next()
+    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    if group.is_dm {
+        let dm: Dm = inf.ps_interface
+            .select(Some((
+                &["group_id"],
+                &[group_id],
+            )))
+            .await
+            .map_err(|e| GenericErr::Internal(e))?
+            .into_iter()
+            .next()
+            .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+        if dm.user_a != Some(auth.user_id) && dm.user_b != Some(auth.user_id) {
+            return Err(GenericErr::Internal(InternalError::NoMatches));
+        }
+    }
+    else {
+        inf.ps_interface
+            .select::<Uuid, Guild_Member>(Some((
+                &["group_id", "member_id"],
+                &[group_id, auth.user_id],
+            )))
+            .await
+            .map_err(|e| GenericErr::Internal(e))?
+            .into_iter()
+            .next()
+            .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+    }
+
 
     let msg: Message = inf
         .ps_interface
