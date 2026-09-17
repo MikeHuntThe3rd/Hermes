@@ -201,11 +201,11 @@ pub struct Relation {
 }
 
 pub struct Senders {
-    pub caller_sender: mpsc::Sender<Bytes>,
-    pub peer_sender: oneshot::Sender<mpsc::Sender<Bytes>>,
+    pub peer: mpsc::Sender<Bytes>,
+    pub caller: oneshot::Sender<mpsc::Sender<Bytes>>,
 }
 
-type RoomId = Uuid;
+type CallId = Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -213,7 +213,7 @@ pub struct AppState {
     pub ps_interface: PsInterface,
     pub lite_interface: LiteInterface,
     pub redis_client: Client,
-    pub pending_calls: Arc<DashMap<RoomId, Senders>>,
+    pub pending_calls: Arc<DashMap<CallId, Senders>>,
 }
 
 #[derive(Serialize, Deserialize)]

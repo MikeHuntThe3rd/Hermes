@@ -1,14 +1,22 @@
+use std::time::Duration;
+
 use axum::{
-    extract::{State, WebSocketUpgrade, ws::WebSocket},
+    extract::{
+        State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
     response::Response,
 };
 use uuid::Uuid;
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::timeout,
+};
 
 use crate::types::*;
 use bytes::Bytes;
-use futures::StreamExt;
+use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc::channel;
 
 use crate::types::AppState;
@@ -17,33 +25,53 @@ pub async fn ws_upgrade(ws: WebSocketUpgrade, State(inf): State<AppState>) -> Re
     return ws.on_upgrade(|socket| test_handler(socket, State(inf), Uuid::new_v4()));
 }
 
-async fn test_handler(mut socket: WebSocket, State(inf): State<AppState>, room_id: Uuid) {
+async fn test_handler(mut socket: WebSocket, State(inf): State<AppState>, call_id: Uuid) {
     let (mut ws_sender, mut ws_receiver) = socket.split();
 
-    let (mut mpsc_sender, mut mpsc_receiver) = channel::<Bytes>(64);
+    let (mpsc_sender, mut mpsc_receiver) = channel::<Bytes>(64);
 
-    let peer_sender: mpsc::Sender<Bytes> = match inf.pending_calls.remove(&room_id) {
+    let peer_sender: mpsc::Sender<Bytes> = match inf.pending_calls.remove(&call_id) {
         Some((_, senders)) => {
-            senders.peer_sender.send(mpsc_sender);
-            senders.caller_sender
+            senders.caller.send(mpsc_sender);
+            senders.peer
         }
         None => {
             let (oneshot_sender, oneshot_receiver) = oneshot::channel();
             inf.pending_calls.insert(
-                room_id,
+                call_id,
                 Senders {
-                    caller_sender: mpsc_sender,
-                    peer_sender: oneshot_sender,
+                    peer: mpsc_sender,
+                    caller: oneshot_sender,
                 },
             );
 
-            match oneshot_receiver.await {
-                Ok(peer_sender) => peer_sender,
-                Err(_) => return,
+            match timeout(Duration::from_secs(60), oneshot_receiver).await {
+                Ok(Ok(peer_sender)) => peer_sender,
+                _ => {
+                    inf.pending_calls.remove(&call_id);
+                    return;
+                }
             }
         }
     };
 
-    let send_task = tokio::spawn(async move {});
-    let recv_task = tokio::spawn(async move {});
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(chunk)) = ws_receiver.next().await {
+            if let Message::Binary(chunk_bytes) = chunk {
+                if peer_sender.send(chunk_bytes).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+    let mut send_task = tokio::spawn(async move {
+        while let Some(chunk) = mpsc_receiver.recv().await {
+            ws_sender.send(Message::Binary(chunk)).await;
+        }
+    });
+
+    tokio::select! {
+        _ = &mut recv_task => recv_task.abort(),
+        _ = &mut send_task => send_task.abort(),
+    }
 }
