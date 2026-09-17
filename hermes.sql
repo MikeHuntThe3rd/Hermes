@@ -48,7 +48,7 @@ CREATE TABLE "guild_invites" (
 CREATE TABLE "dm_invites" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "group_id" uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-  "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE "guild_members" (
@@ -85,8 +85,6 @@ ALTER TABLE "messages" ADD CONSTRAINT "user_msg" FOREIGN KEY ("user_id") REFEREN
 ALTER TABLE "messages" ADD CONSTRAINT "group_msg" FOREIGN KEY ("group_id") REFERENCES "groups" ("id") ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE "users" ADD CONSTRAINT "pfp_link" FOREIGN KEY ("pfp") REFERENCES "objects" ("id") ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE;
-
-ALTER TABLE "groups" ADD CONSTRAINT "gp_link" FOREIGN KEY ("gp") REFERENCES "objects" ("id") ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE;
 
 CREATE OR REPLACE FUNCTION dm_cleanup() RETURNS trigger AS $$
 DECLARE

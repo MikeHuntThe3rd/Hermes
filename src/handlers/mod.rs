@@ -2,6 +2,7 @@ pub mod delete;
 pub mod get;
 pub mod patch;
 pub mod post;
+pub mod ws;
 
 use crate::AppState;
 use serde::{Deserialize, Serialize};

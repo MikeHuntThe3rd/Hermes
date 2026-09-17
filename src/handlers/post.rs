@@ -1,10 +1,9 @@
-use std::any::TypeId;
-
 use axum::{
     Json,
     extract::{Multipart, Path, State},
     http::StatusCode,
 };
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -174,19 +173,19 @@ pub async fn add_message(
         return Err(GenericErr::Internal(InternalError::EmptyMessage));
     }
 
-    let group: Group = inf.ps_interface.select(Some((&["id"], &[group_id])))
-    .await
-    .map_err(|e| GenericErr::Internal(e))?
-    .into_iter()
-    .next()
-    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+    let group: Group = inf
+        .ps_interface
+        .select(Some((&["id"], &[group_id])))
+        .await
+        .map_err(|e| GenericErr::Internal(e))?
+        .into_iter()
+        .next()
+        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
     if group.is_dm {
-        let dm: Dm = inf.ps_interface
-            .select(Some((
-                &["group_id"],
-                &[group_id],
-            )))
+        let dm: Dm = inf
+            .ps_interface
+            .select(Some((&["group_id"], &[group_id])))
             .await
             .map_err(|e| GenericErr::Internal(e))?
             .into_iter()
@@ -196,8 +195,7 @@ pub async fn add_message(
         if dm.user_a != Some(auth.user_id) && dm.user_b != Some(auth.user_id) {
             return Err(GenericErr::Internal(InternalError::NoMatches));
         }
-    }
-    else {
+    } else {
         inf.ps_interface
             .select::<Uuid, Guild_Member>(Some((
                 &["group_id", "member_id"],
@@ -209,7 +207,6 @@ pub async fn add_message(
             .next()
             .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
     }
-
 
     let msg: Message = inf
         .ps_interface

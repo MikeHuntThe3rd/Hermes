@@ -11,7 +11,7 @@ use std::{env, path, time::Duration};
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    routing::{delete, get, patch, post},
+    routing::{any, delete, get, patch, post},
 };
 use fred::{
     interfaces::{ClientLike, EventInterface},
@@ -26,7 +26,7 @@ use uuid::Uuid;
 use crate::types::PrivilegeT;
 use auth::endpoints::*;
 use db::PsInterface;
-use handlers::{delete::*, get::*, patch::*, post::*};
+use handlers::{delete::*, get::*, patch::*, post::*, ws::*};
 use types::{AppState, OBJ_PTH_STR, TEMP_PTH_STR};
 
 use crate::{db::LiteInterface, types::User};
@@ -134,7 +134,10 @@ async fn main() {
         .route("/{group_id}/invite", post(invite_guild_member))
         .route("/{group_id}", delete(delete_guild))
         .route("/{group_id}", patch(update_guild))
-        .route("/{group_id}/member/{member_id}",delete(delete_guild_member),);
+        .route(
+            "/{group_id}/member/{member_id}",
+            delete(delete_guild_member),
+        );
 
     let groups: Router<AppState> = Router::new()
         .nest("/dm", dm)
@@ -163,6 +166,8 @@ async fn main() {
         .route("/pull/{object_id}", get(pull))
         .layer(DefaultBodyLimit::max(10000000));
 
+    let sockets: Router<AppState> = Router::new().route("/upgrade", any(ws_upgrade));
+
     let api = Router::new()
         /* ===== Invites ===== */
         .route("/invite/new_user", post(create_invite))
@@ -176,6 +181,8 @@ async fn main() {
         .nest("/user", users)
         /* ===== Objects ===== */
         .nest("/object", objects)
+        /* ===== WebSockets ===== */
+        .nest("/ws", sockets)
         /* ===== Generics ===== */
         .layer(CorsLayer::very_permissive())
         .with_state(state);

@@ -1,4 +1,6 @@
 #![allow(warnings)]
+use std::sync::Arc;
+
 use crate::db::*;
 use crate::logging::Logs;
 use axum::http::StatusCode;
@@ -6,10 +8,13 @@ use base64::engine::{
     GeneralPurpose,
     general_purpose::{self, URL_SAFE_NO_PAD},
 };
+use bytes::Bytes;
+use dashmap::DashMap;
 use derive_macros::Bindable;
 use fred::clients::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
+use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 /* ===== CONSTS ===== */
 
@@ -195,12 +200,20 @@ pub struct Relation {
     pub state: RelationT,
 }
 
+pub struct Senders {
+    pub caller_sender: mpsc::Sender<Bytes>,
+    pub peer_sender: oneshot::Sender<mpsc::Sender<Bytes>>,
+}
+
+type RoomId = Uuid;
+
 #[derive(Clone)]
 pub struct AppState {
     pub jwt_secret: Vec<u8>,
     pub ps_interface: PsInterface,
     pub lite_interface: LiteInterface,
     pub redis_client: Client,
+    pub pending_calls: Arc<DashMap<RoomId, Senders>>,
 }
 
 #[derive(Serialize, Deserialize)]
