@@ -2,10 +2,8 @@ use std::time::Duration;
 
 use axum::{
     extract::{
-        State, WebSocketUpgrade,
-        ws::{Message, WebSocket},
-    },
-    response::Response,
+        State, WebSocketUpgrade, ws::{CloseFrame, Message, WebSocket},
+    }, response::Response,
 };
 use uuid::Uuid;
 
@@ -22,17 +20,20 @@ use tokio::sync::mpsc::channel;
 use crate::types::AppState;
 
 pub async fn ws_upgrade(ws: WebSocketUpgrade, State(inf): State<AppState>) -> Response {
-    return ws.on_upgrade(|socket| test_handler(socket, State(inf), Uuid::new_v4()));
+    return ws.on_upgrade(|socket| peer_to_peer_call(socket, State(inf), Uuid::new_v4()));
 }
 
-async fn test_handler(mut socket: WebSocket, State(inf): State<AppState>, call_id: Uuid) {
+async fn peer_to_peer_call(socket: WebSocket, State(inf): State<AppState>, call_id: Uuid) {
     let (mut ws_sender, mut ws_receiver) = socket.split();
 
-    let (mpsc_sender, mut mpsc_receiver) = channel::<Bytes>(64);
+    let (local_sender, mut local_receiver) = channel::<Bytes>(64);
 
     let peer_sender: mpsc::Sender<Bytes> = match inf.pending_calls.remove(&call_id) {
-        Some((_, senders)) => {
-            senders.caller.send(mpsc_sender);
+        Some((room_id, senders)) => {
+            if senders.caller.send(local_sender).is_err() {
+                ws_sender.send(Message::Close(Some(CloseFrame { code: 1011, reason: "the peer dropped the connection".into() }))).await.ok();
+                return;
+            }
             senders.peer
         }
         None => {
@@ -40,7 +41,7 @@ async fn test_handler(mut socket: WebSocket, State(inf): State<AppState>, call_i
             inf.pending_calls.insert(
                 call_id,
                 Senders {
-                    peer: mpsc_sender,
+                    peer: local_sender,
                     caller: oneshot_sender,
                 },
             );
@@ -65,8 +66,8 @@ async fn test_handler(mut socket: WebSocket, State(inf): State<AppState>, call_i
         }
     });
     let mut send_task = tokio::spawn(async move {
-        while let Some(chunk) = mpsc_receiver.recv().await {
-            ws_sender.send(Message::Binary(chunk)).await;
+        while let Some(chunk) = local_receiver.recv().await {
+            ws_sender.send(Message::Binary(chunk)).await.ok();
         }
     });
 

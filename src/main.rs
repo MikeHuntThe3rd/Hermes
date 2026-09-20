@@ -6,13 +6,14 @@ mod logging;
 mod responses;
 mod types;
 
-use std::{env, path, time::Duration};
+use std::{env, path, sync::Arc, time::Duration};
 
 use axum::{
     Router,
     extract::DefaultBodyLimit,
     routing::{any, delete, get, patch, post},
 };
+use dashmap::DashMap;
 use fred::{
     interfaces::{ClientLike, EventInterface},
     types::{
@@ -93,7 +94,7 @@ async fn setup() -> AppState {
     let state = AppState {
         jwt_secret: env::var("JWT_SECRET")
             .expect("the jwt secret is expected to exist")
-            .into_bytes(),
+            .into_bytes().into(),
         ps_interface: PsInterface::new()
             .await
             .expect("failed to create the postgres db connection"),
@@ -101,6 +102,8 @@ async fn setup() -> AppState {
             .await
             .expect("failed to create the sqlite db connection"),
         redis_client: client,
+        pending_calls: Arc::new(DashMap::new()),
+        active_calls: Arc::new(DashMap::new()),
     };
 
     ensure_master_user(state.clone()).await;

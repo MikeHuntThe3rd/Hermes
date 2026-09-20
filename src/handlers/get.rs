@@ -155,7 +155,7 @@ pub async fn get_messages(
 
     if let Some(oldest) = messages.last() {
         let bytes = oldest.id.to_be_bytes();
-        let cursor = EDE.encode(bytes);
+        let cursor = ENCODE_DECODE_ENGINE.encode(bytes);
 
         let res = MsgResponse {
             cursor: cursor,

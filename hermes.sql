@@ -90,12 +90,12 @@ CREATE OR REPLACE FUNCTION dm_cleanup() RETURNS trigger AS $$
 DECLARE
 BEGIN
     IF NEW.user_a IS NULL AND NEW.user_b IS NULL THEN
-	DELETE FROM groups WHERE groups.id = NEW.group_id;
+	    DELETE FROM groups WHERE groups.id = NEW.group_id;
     END IF;
-    RETURN NULL;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_check_dm_state
-BEFORE UPDATE OR INSERT ON dms
+BEFORE UPDATE ON dms
 FOR EACH ROW EXECUTE FUNCTION dm_cleanup();

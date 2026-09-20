@@ -27,7 +27,7 @@ pub const INVITES_BLACKLIST_STR: &'static str = "jwt:blacklist:invites:";
 
 pub const PLACE_HOLDER_UUID: Uuid = Uuid::nil();
 
-pub const EDE: GeneralPurpose = URL_SAFE_NO_PAD;
+pub const ENCODE_DECODE_ENGINE: GeneralPurpose = URL_SAFE_NO_PAD;
 
 /* ===== TRAITS ===== */
 
@@ -206,14 +206,17 @@ pub struct Senders {
 }
 
 type CallId = Uuid;
+type RoomId = Uuid;
+type UserId = Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub jwt_secret: Vec<u8>,
+    pub jwt_secret: Arc<[u8]>,
     pub ps_interface: PsInterface,
     pub lite_interface: LiteInterface,
     pub redis_client: Client,
     pub pending_calls: Arc<DashMap<CallId, Senders>>,
+    pub active_calls: Arc<DashMap<UserId, RoomId>>,
 }
 
 #[derive(Serialize, Deserialize)]
