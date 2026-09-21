@@ -94,7 +94,8 @@ async fn setup() -> AppState {
     let state = AppState {
         jwt_secret: env::var("JWT_SECRET")
             .expect("the jwt secret is expected to exist")
-            .into_bytes().into(),
+            .into_bytes()
+            .into(),
         ps_interface: PsInterface::new()
             .await
             .expect("failed to create the postgres db connection"),
@@ -126,7 +127,8 @@ async fn main() {
         .route("/new/member/{member_id}", post(add_dm))
         .route("/invites", get(get_dm_invites))
         .route("/invite/{invite_id}", patch(manage_dm_invite))
-        .route("/{group_id}", delete(delete_dm));
+        .route("/{group_id}", delete(delete_dm))
+        .route("/{group_id}/member/{member_id}/message", post(add_message));
 
     let guild: Router<AppState> = Router::new()
         .route("/", post(add_guild))
@@ -138,6 +140,10 @@ async fn main() {
         .route("/{group_id}", delete(delete_guild))
         .route("/{group_id}", patch(update_guild))
         .route(
+            "/{group_id}/member/{member_id}/message/{channel_id}",
+            post(add_message),
+        )
+        .route(
             "/{group_id}/member/{member_id}",
             delete(delete_guild_member),
         );
@@ -146,7 +152,6 @@ async fn main() {
         .nest("/dm", dm)
         .nest("/guild", guild)
         /* ===== Groups ===== */
-        .route("/{group_id}/message", post(add_message))
         .route("/{group_id}/message/all", get(get_messages))
         .route("/{group_id}/message/{message_id}", patch(update_message))
         .route("/{group_id}/message/{message_id}", delete(delete_message));

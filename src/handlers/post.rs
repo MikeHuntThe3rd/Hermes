@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::{
     auth::{creation::create_priv_jwt, extractor::AuthUser},
     handlers::{Msg, fetch_group_member},
+    logging::Resp,
     responses::error_t::{AuthError, GenericErr, InternalError},
     types::*,
 };
@@ -161,6 +162,14 @@ pub async fn add_dm(
         msg: String::new(),
         data: None,
     });
+}
+
+pub async fn add_dm_message() -> Result<Resp<()>, InternalError> {
+    return Err(InternalError::DbError);
+}
+
+pub async fn add_guild_message() -> Result<Resp<()>, InternalError> {
+    return Err(InternalError::DbError);
 }
 
 pub async fn add_message(
