@@ -168,32 +168,30 @@ pub async fn add_message(
     State(inf): State<AppState>,
     Path(group_id): Path<Uuid>,
     Json(data): Json<Msg>,
-) -> Result<Res<()>, GenericErr> {
+) -> Result<Res<()>, InternalError> {
     if data.file_ids.is_empty() && data.message.is_none() {
-        return Err(GenericErr::Internal(InternalError::EmptyMessage));
+        return Err(InternalError::EmptyMessage);
     }
 
     let group: Group = inf
         .ps_interface
         .select(Some((&["id"], &[group_id])))
-        .await
-        .map_err(|e| GenericErr::Internal(e))?
+        .await?
         .into_iter()
         .next()
-        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+        .ok_or(InternalError::NoMatches)?;
 
     if group.is_dm {
         let dm: Dm = inf
             .ps_interface
             .select(Some((&["group_id"], &[group_id])))
-            .await
-            .map_err(|e| GenericErr::Internal(e))?
+            .await?
             .into_iter()
             .next()
-            .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+            .ok_or(InternalError::NoMatches)?;
 
         if dm.user_a != Some(auth.user_id) && dm.user_b != Some(auth.user_id) {
-            return Err(GenericErr::Internal(InternalError::NoMatches));
+            return Err(InternalError::NoMatches);
         }
     } else {
         inf.ps_interface
@@ -201,11 +199,10 @@ pub async fn add_message(
                 &["group_id", "member_id"],
                 &[group_id, auth.user_id],
             )))
-            .await
-            .map_err(|e| GenericErr::Internal(e))?
+            .await?
             .into_iter()
             .next()
-            .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+            .ok_or(InternalError::NoMatches)?;
     }
 
     let msg: Message = inf
@@ -215,36 +212,33 @@ pub async fn add_message(
                 id: 0,
                 message: data.message,
                 group_id: group_id,
+                channel_id: Some(Uuid::new_v4()),
                 user_id: Some(auth.user_id),
             }],
             false,
         )
-        .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?
+        .await?
         .into_iter()
         .next()
-        .ok_or(GenericErr::Internal(InternalError::DbError))?;
+        .ok_or(InternalError::NoMatches)?;
 
-    for file_id in data.file_ids {
-        let msg_obj = inf
-            .ps_interface
-            .insert(
-                &[Message_Object {
-                    message_id: msg.id,
-                    object_id: file_id,
-                }],
-                true,
-            )
-            .await;
+    let msg_objs: Vec<Message_Object> = data
+        .file_ids
+        .into_iter()
+        .map(|file_id| Message_Object {
+            message_id: msg.id,
+            object_id: file_id,
+        })
+        .collect();
 
-        if msg_obj.is_err() {
-            inf.ps_interface
-                .delete::<i32, Message_Object>(&[msg.id])
-                .await
-                .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+    let msg_objs_insert = inf.ps_interface.insert(&msg_objs, true).await;
 
-            return Err(GenericErr::Internal(InternalError::DbError));
-        }
+    if msg_objs_insert.is_err() {
+        inf.ps_interface
+            .delete::<i32, Message_Object>(&[msg.id])
+            .await?;
+
+        return Err(InternalError::DbError);
     }
 
     return Ok(Res {
