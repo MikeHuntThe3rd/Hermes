@@ -77,6 +77,7 @@ pub enum RelationT {
     Pending,
     Blocked,
 }
+
 #[derive(Debug, sqlx::Type, Serialize, Deserialize, Clone, PartialEq)]
 #[sqlx(type_name = "privilege_t")]
 pub enum PrivilegeT {
@@ -90,6 +91,13 @@ pub enum RankT {
     User,
     Admin,
     Owner,
+}
+
+#[derive(Debug, sqlx::Type, Serialize, Deserialize)]
+#[sqlx(type_name = "channel_t")]
+pub enum ChannelT {
+    Text,
+    Voice,
 }
 
 /* ===== STRUCTS ===== */
@@ -132,6 +140,15 @@ pub struct Guild {
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "group_id"]
+pub struct Channel {
+    pub id: Uuid,
+    pub group_id: Uuid,
+    pub name: String,
+    pub category: ChannelT,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "group_id"]
 pub struct Dm {
     pub group_id: Uuid,
     pub user_a: Option<Uuid>,
@@ -170,6 +187,7 @@ pub struct Message {
     pub id: i32,
     pub message: Option<String>,
     pub group_id: Uuid,
+    pub channel_id: Option<Uuid>,
     pub user_id: Option<Uuid>,
 }
 
