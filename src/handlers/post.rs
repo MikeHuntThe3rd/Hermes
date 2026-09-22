@@ -44,6 +44,12 @@ pub struct Grp {
     pub gp: Option<Uuid>,
 }
 
+#[derive(Deserialize)]
+pub struct Chnl {
+    pub name: String,
+    pub category: ChannelT,
+}
+
 pub async fn add_guild(
     auth: AuthUser,
     State(inf): State<AppState>,
@@ -87,7 +93,20 @@ pub async fn add_guild(
         )
         .await;
 
-    if member.is_err() || meta.is_err() {
+    let channel = inf
+        .ps_interface
+        .insert(
+            &[Channel {
+                id: PLACE_HOLDER_UUID,
+                group_id: group.id,
+                name: "main".to_string(),
+                category: ChannelT::Text,
+            }],
+            false,
+        )
+        .await;
+
+    if member.is_err() || meta.is_err() || channel.is_err() {
         inf.ps_interface.delete::<Uuid, Group>(&[group.id]).await?;
         return Err(InternalError::DbError);
     }
@@ -420,6 +439,41 @@ pub async fn create_invite(
     };
 
     return Ok(res);
+}
+
+pub async fn add_guild_channel(
+    _auth: AuthUser,
+    State(inf): State<AppState>,
+    Path((group_id, member_id)): Path<(Uuid, Uuid)>,
+    Json(data): Json<Chnl>,
+) -> Result<Res<()>, GenericErr> {
+    let member = fetch_group_member(inf.clone(), &group_id, &member_id)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
+
+    if member.rank < RankT::Admin {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
+    }
+
+    inf.ps_interface
+        .insert(
+            &[Channel {
+                id: PLACE_HOLDER_UUID,
+                group_id: group_id,
+                name: data.name,
+                category: data.category,
+            }],
+            false,
+        )
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
+
+    return Ok(Res {
+        status: StatusCode::CREATED,
+        success: true,
+        msg: String::new(),
+        data: None,
+    });
 }
 
 pub async fn upload(

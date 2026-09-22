@@ -1,9 +1,9 @@
 use axum::extract::{Path, State};
 use axum::{Json, http::StatusCode};
 use serde::{Deserialize, Serialize};
-use sqlx::{Postgres, query};
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
+use sqlx::{Postgres, query};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -42,24 +42,38 @@ pub async fn update_self(
     }
 
     if data.username.trim().len() < 3 || data.password.trim().len() < 3 {
-        return Err(GenericErr::Internal(InternalError::InvalidAccountCredentials));
+        return Err(GenericErr::Internal(
+            InternalError::InvalidAccountCredentials,
+        ));
     }
 
-    let old_user: User = inf.ps_interface.select(Some((&["id"], &[auth.user_id])))
-    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?
-    .into_iter().next().ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+    let old_user: User = inf
+        .ps_interface
+        .select(Some((&["id"], &[auth.user_id])))
+        .await
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?
+        .into_iter()
+        .next()
+        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
-    inf.ps_interface.update(User{
-        id: auth.user_id,
-        nickname: data.nickname,
-        prv: old_user.prv,
-        username: data.username,
-        password: data.password,
-        pfp: data.pfp
-    })
-    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+    inf.ps_interface
+        .update(User {
+            id: auth.user_id,
+            nickname: data.nickname,
+            prv: old_user.prv,
+            username: data.username,
+            password: data.password,
+            pfp: data.pfp,
+        })
+        .await
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    return Ok(Res { status: StatusCode::OK, success: true, msg: String::new(), data: None });
+    return Ok(Res {
+        status: StatusCode::OK,
+        success: true,
+        msg: String::new(),
+        data: None,
+    });
 }
 
 pub async fn update_guild(
@@ -195,13 +209,12 @@ pub async fn manage_dm_invite(
 
     if data.accept {
         inf.ps_interface
-            .update::<Dm_Invite>(
-                Dm_Invite { 
-                    id: inv.id, 
-                    group_id: inv.group_id, 
-                    user_id: auth.user_id 
-                })
-        .await?;
+            .update::<Dm_Invite>(Dm_Invite {
+                id: inv.id,
+                group_id: inv.group_id,
+                user_id: auth.user_id,
+            })
+            .await?;
     }
 
     inf.ps_interface
@@ -283,7 +296,7 @@ pub async fn update_message(
         .ps_interface
         .select::<i32, Message>(Some((&["id"], &[message_id])))
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?
+        .map_err(|e| GenericErr::Internal(e))?
         .into_iter()
         .next()
         .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
@@ -304,10 +317,11 @@ pub async fn update_message(
             id: 0,
             message: data.message,
             group_id: group_id,
+            channel_id: msg.channel_id,
             user_id: Some(auth.user_id),
         })
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
     let old_objs_hash: HashSet<Uuid> = inf
         .ps_interface
@@ -320,20 +334,30 @@ pub async fn update_message(
 
     let new_objs_hash: HashSet<Uuid> = data.file_ids.into_iter().collect();
 
-    let insert_objs: Vec<Message_Object> = new_objs_hash.difference(&old_objs_hash)
-    .map(|obj_id| Message_Object { message_id: msg.id, object_id: *obj_id })
-    .collect();
+    let insert_objs: Vec<Message_Object> = new_objs_hash
+        .difference(&old_objs_hash)
+        .map(|obj_id| Message_Object {
+            message_id: msg.id,
+            object_id: *obj_id,
+        })
+        .collect();
 
     let delete_objs: Vec<&Uuid> = old_objs_hash.difference(&new_objs_hash).collect();
 
-    inf.ps_interface.insert(&insert_objs,true,)
-    .await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+    inf.ps_interface
+        .insert(&insert_objs, true)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
-    let sql: &'static str = "DELETE FROM message_objects WHERE message_id = $1 AND object_id = ANY($2);";
+    let sql: &'static str =
+        "DELETE FROM message_objects WHERE message_id = $1 AND object_id = ANY($2);";
 
     let query: Query<'_, Postgres, PgArguments> = query(sql).bind(msg.id).bind(delete_objs);
 
-    inf.ps_interface.generic_exec(query).await.map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+    inf.ps_interface
+        .generic_exec(query)
+        .await
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
     return Ok(Res {
         status: StatusCode::OK,
@@ -341,4 +365,8 @@ pub async fn update_message(
         msg: String::new(),
         data: None,
     });
+}
+
+pub async fn update_channel(auth: AuthUser) -> Result<InternalError, AuthError> {
+    return Ok(InternalError::DbError);
 }

@@ -234,7 +234,6 @@ pub struct AppState {
     pub lite_interface: LiteInterface,
     pub redis_client: Client,
     pub pending_calls: Arc<DashMap<CallId, Senders>>,
-    pub active_calls: Arc<DashMap<UserId, RoomId>>,
 }
 
 #[derive(Serialize, Deserialize)]

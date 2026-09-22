@@ -1,8 +1,8 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use sqlx::{Postgres, query_as};
 use sqlx::postgres::PgArguments;
 use sqlx::query::QueryAs;
+use sqlx::{Postgres, query_as};
 use uuid::Uuid;
 
 use crate::handlers::fetch_group_member;
@@ -21,10 +21,14 @@ pub async fn delete_self(
         WHERE gm2.group_id = groups.id AND gm2.rank = $2
     ) = 1;";
 
-    let query: QueryAs<'_, Postgres, Group, PgArguments> = query_as(sql).bind(auth.user_id).bind(RankT::Owner);
+    let query: QueryAs<'_, Postgres, Group, PgArguments> =
+        query_as(sql).bind(auth.user_id).bind(RankT::Owner);
 
-    let orphan_groups = inf.ps_interface.generic_fetch(query)
-    .await.map_err(|_| InternalError::DbError)?;
+    let orphan_groups = inf
+        .ps_interface
+        .generic_fetch(query)
+        .await
+        .map_err(|_| InternalError::DbError)?;
 
     if !orphan_groups.is_empty() {
         return Err(InternalError::DetachingOperation);
@@ -84,11 +88,14 @@ pub async fn delete_dm(
     State(inf): State<AppState>,
     Path(group_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
-    let dm: Dm = inf.ps_interface.select(Some((&["group_id"], &[group_id])))
-    .await.map_err(|e| GenericErr::Internal(e))?
-    .into_iter()
-    .next()
-    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+    let dm: Dm = inf
+        .ps_interface
+        .select(Some((&["group_id"], &[group_id])))
+        .await
+        .map_err(|e| GenericErr::Internal(e))?
+        .into_iter()
+        .next()
+        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
     if Some(auth.user_id) != dm.user_a && Some(auth.user_id) != dm.user_b {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
@@ -197,7 +204,7 @@ pub async fn delete_message(
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    if deletes.len() >= 1 {
+    if !deletes.is_empty() {
         return Ok(Res {
             status: StatusCode::OK,
             success: true,
@@ -207,4 +214,38 @@ pub async fn delete_message(
     } else {
         return Err(GenericErr::Internal(InternalError::NoMatches));
     }
+}
+
+pub async fn delete_channel(
+    _auth: AuthUser,
+    State(inf): State<AppState>,
+    Path((group_id, user_id, channel_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<Res<()>, GenericErr> {
+    let member = fetch_group_member(inf.clone(), &group_id, &user_id)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
+
+    inf.ps_interface
+        .select::<Uuid, Channel>(Some((&["id"], &[channel_id])))
+        .await
+        .map_err(|e| GenericErr::Internal(e))?
+        .into_iter()
+        .next()
+        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    if member.rank < RankT::Admin {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
+    }
+
+    inf.ps_interface
+        .delete::<Uuid, Channel>(&[channel_id])
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
+
+    return Ok(Res {
+        status: StatusCode::OK,
+        success: true,
+        msg: String::new(),
+        data: None,
+    });
 }

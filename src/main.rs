@@ -104,7 +104,6 @@ async fn setup() -> AppState {
             .expect("failed to create the sqlite db connection"),
         redis_client: client,
         pending_calls: Arc::new(DashMap::new()),
-        active_calls: Arc::new(DashMap::new()),
     };
 
     ensure_master_user(state.clone()).await;
@@ -143,8 +142,20 @@ async fn main() {
         .route("/{group_id}", delete(delete_guild))
         .route("/{group_id}", patch(update_guild))
         .route(
-            "/{group_id}/member/{member_id}/message/{channel_id}",
+            "/{group_id}/member/{member_id}/channel/{channel_id}/message",
             post(add_guild_message),
+        )
+        .route(
+            "/{group_id}/member/{member_id}/channel",
+            post(add_guild_channel),
+        )
+        .route(
+            "/{group_id}/member/{member_id}/channel/{channel_id}",
+            patch(update_channel),
+        )
+        .route(
+            "/{group_id}/member/{member_id}/channel/{channel_id}",
+            delete(delete_channel),
         )
         .route(
             "/{group_id}/member/{member_id}",
