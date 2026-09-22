@@ -128,7 +128,10 @@ async fn main() {
         .route("/invites", get(get_dm_invites))
         .route("/invite/{invite_id}", patch(manage_dm_invite))
         .route("/{group_id}", delete(delete_dm))
-        .route("/{group_id}/member/{member_id}/message", post(add_message));
+        .route(
+            "/{group_id}/member/{member_id}/message",
+            post(add_dm_message),
+        );
 
     let guild: Router<AppState> = Router::new()
         .route("/", post(add_guild))
@@ -141,7 +144,7 @@ async fn main() {
         .route("/{group_id}", patch(update_guild))
         .route(
             "/{group_id}/member/{member_id}/message/{channel_id}",
-            post(add_message),
+            post(add_guild_message),
         )
         .route(
             "/{group_id}/member/{member_id}",

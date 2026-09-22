@@ -13,7 +13,6 @@ use uuid::Uuid;
 use crate::{
     auth::{creation::create_priv_jwt, extractor::AuthUser},
     handlers::{Msg, fetch_group_member},
-    logging::Resp,
     responses::error_t::{AuthError, GenericErr, InternalError},
     types::*,
 };
@@ -164,19 +163,37 @@ pub async fn add_dm(
     });
 }
 
-pub async fn add_dm_message() -> Result<Resp<()>, InternalError> {
-    return Err(InternalError::DbError);
-}
-
-pub async fn add_guild_message() -> Result<Resp<()>, InternalError> {
-    return Err(InternalError::DbError);
-}
-
-pub async fn add_message(
+pub async fn add_dm_message(
     auth: AuthUser,
     State(inf): State<AppState>,
     Path(group_id): Path<Uuid>,
     Json(data): Json<Msg>,
+) -> Result<Res<()>, InternalError> {
+    return Ok(add_message(inf, auth.user_id, group_id, None, data).await?);
+}
+
+pub async fn add_guild_message(
+    auth: AuthUser,
+    State(inf): State<AppState>,
+    Path((group_id, channel_id)): Path<(Uuid, Uuid)>,
+    Json(data): Json<Msg>,
+) -> Result<Res<()>, InternalError> {
+    inf.ps_interface
+        .select::<Uuid, Channel>(Some((&["id"], &[channel_id])))
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(InternalError::NoMatches)?;
+
+    return Ok(add_message(inf, auth.user_id, group_id, Some(channel_id), data).await?);
+}
+
+async fn add_message(
+    inf: AppState,
+    user_id: Uuid,
+    group_id: Uuid,
+    channel_id: Option<Uuid>,
+    data: Msg,
 ) -> Result<Res<()>, InternalError> {
     if data.file_ids.is_empty() && data.message.is_none() {
         return Err(InternalError::EmptyMessage);
@@ -199,15 +216,12 @@ pub async fn add_message(
             .next()
             .ok_or(InternalError::NoMatches)?;
 
-        if dm.user_a != Some(auth.user_id) && dm.user_b != Some(auth.user_id) {
+        if dm.user_a != Some(user_id) && dm.user_b != Some(user_id) {
             return Err(InternalError::NoMatches);
         }
     } else {
         inf.ps_interface
-            .select::<Uuid, Guild_Member>(Some((
-                &["group_id", "member_id"],
-                &[group_id, auth.user_id],
-            )))
+            .select::<Uuid, Guild_Member>(Some((&["group_id", "member_id"], &[group_id, user_id])))
             .await?
             .into_iter()
             .next()
@@ -221,8 +235,8 @@ pub async fn add_message(
                 id: 0,
                 message: data.message,
                 group_id: group_id,
-                channel_id: Some(Uuid::new_v4()),
-                user_id: Some(auth.user_id),
+                channel_id: channel_id,
+                user_id: Some(user_id),
             }],
             false,
         )
