@@ -132,6 +132,24 @@ async fn main() {
             post(add_dm_message),
         );
 
+    let channel: Router<AppState> = Router::new()
+        .route(
+            "/{channel_id}/message",
+            post(add_guild_message),
+        )
+        .route(
+            "/",
+            post(add_guild_channel),
+        )
+        .route(
+            "/{channel_id}",
+            patch(update_channel),
+        )
+        .route(
+            "/{channel_id}",
+            delete(delete_channel),
+        );
+
     let guild: Router<AppState> = Router::new()
         .route("/", post(add_guild))
         .route("/all", get(get_guilds))
@@ -142,25 +160,10 @@ async fn main() {
         .route("/{group_id}", delete(delete_guild))
         .route("/{group_id}", patch(update_guild))
         .route(
-            "/{group_id}/member/{member_id}/channel/{channel_id}/message",
-            post(add_guild_message),
-        )
-        .route(
-            "/{group_id}/member/{member_id}/channel",
-            post(add_guild_channel),
-        )
-        .route(
-            "/{group_id}/member/{member_id}/channel/{channel_id}",
-            patch(update_channel),
-        )
-        .route(
-            "/{group_id}/member/{member_id}/channel/{channel_id}",
-            delete(delete_channel),
-        )
-        .route(
             "/{group_id}/member/{member_id}",
             delete(delete_guild_member),
-        );
+        )
+        .nest("{group_id}/channel", channel);
 
     let groups: Router<AppState> = Router::new()
         .nest("/dm", dm)

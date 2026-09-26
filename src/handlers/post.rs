@@ -442,12 +442,12 @@ pub async fn create_invite(
 }
 
 pub async fn add_guild_channel(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(inf): State<AppState>,
-    Path((group_id, member_id)): Path<(Uuid, Uuid)>,
+    Path(group_id): Path<Uuid>,
     Json(data): Json<Chnl>,
 ) -> Result<Res<()>, GenericErr> {
-    let member = fetch_group_member(inf.clone(), &group_id, &member_id)
+    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 

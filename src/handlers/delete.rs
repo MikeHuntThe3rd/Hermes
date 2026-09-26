@@ -217,11 +217,11 @@ pub async fn delete_message(
 }
 
 pub async fn delete_channel(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(inf): State<AppState>,
-    Path((group_id, user_id, channel_id)): Path<(Uuid, Uuid, Uuid)>,
+    Path((group_id, channel_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Res<()>, GenericErr> {
-    let member = fetch_group_member(inf.clone(), &group_id, &user_id)
+    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 

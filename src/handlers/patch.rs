@@ -25,6 +25,11 @@ pub struct StatChange {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct ChannelUpdate {
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct UserUpdate {
     pub nickname: String,
     pub username: String,
@@ -367,6 +372,32 @@ pub async fn update_message(
     });
 }
 
-pub async fn update_channel(auth: AuthUser) -> Result<InternalError, AuthError> {
-    return Ok(InternalError::DbError);
+pub async fn update_channel(auth: AuthUser, State(inf): State<AppState>, Path((group_id, channel_id)): Path<(Uuid, Uuid)>, Json(data): Json<ChannelUpdate>) -> Result<Res<()>, GenericErr> {
+    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    .await.map_err(|e| GenericErr::Internal(e))?;
+
+    if member.rank < RankT::Admin {
+        return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
+    }
+
+    let channel: Channel = inf.ps_interface.select(Some((&["id"], &[channel_id])))
+    .await.map_err(|e| GenericErr::Internal(e))?
+    .into_iter()
+    .next()
+    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    inf.ps_interface.update(Channel {
+        id: channel.id,
+        group_id: group_id,
+        name: data.name,
+        category: channel.category
+    })
+    .await.map_err(|e| GenericErr::Internal(e))?;
+
+    return Ok( Res{
+        status: StatusCode::OK,
+        success: true,
+        msg: String::new(),
+        data: None
+    });
 }
