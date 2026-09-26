@@ -4,7 +4,7 @@ CREATE TYPE rank_t AS ENUM ('User', 'Admin', 'Owner');
 CREATE TYPE channel_t AS ENUM ('Text', 'Voice');
 
 CREATE TABLE "users" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "nickname" text NOT NULL,
   "prv" privilege_t NOT NULL,
   "username" text NOT NULL UNIQUE,
@@ -21,7 +21,7 @@ CREATE TABLE "relations" (
 );
 
 CREATE TABLE "groups" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "is_dm" bool NOT NULL
 );
 
@@ -32,7 +32,7 @@ CREATE TABLE "guilds" (
 );
 
 CREATE TABLE "channels" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "group_id" uuid REFERENCES groups(id) ON DELETE CASCADE,
   "name" text NOT NULL,
   "category" channel_t NOT NULL
@@ -46,14 +46,14 @@ CREATE TABLE "dms" (
 );
 
 CREATE TABLE "guild_invites" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "group_id" uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   "rank" rank_t NOT NULL
 );
 
 CREATE TABLE "dm_invites" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "group_id" uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE
 );
@@ -74,7 +74,7 @@ CREATE TABLE "messages" (
 );
 
 CREATE TABLE "objects" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "hash" char(64) NOT NULL UNIQUE,
   "rel_path" text NOT NULL UNIQUE,
   "mime_type" text NOT NULL,
