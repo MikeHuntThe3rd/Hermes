@@ -124,38 +124,36 @@ async fn main() {
 
     let dm: Router<AppState> = Router::new()
         .route("/new/member/{member_id}", post(add_dm))
-        .route("/invites", get(get_dm_invites))
+        .route("/invite/inital", get(get_inital_dm_invites))
+        .route("/invite/{cursor}", get(get_dm_invites_from))
         .route("/invite/{invite_id}", patch(manage_dm_invite))
         .route("/{group_id}", delete(delete_dm))
         .route(
             "/{group_id}/member/{member_id}/message",
             post(add_dm_message),
-        );
+        )
+        .route("/{group_id}/message/inital", get(get_inital_messages))
+        .route("/{group_id}/message/{cursor}", get(get_messages_from));
 
     let channel: Router<AppState> = Router::new()
-        .route(
-            "/{channel_id}/message",
-            post(add_guild_message),
-        )
-        .route(
-            "/",
-            post(add_guild_channel),
-        )
-        .route(
-            "/{channel_id}",
-            patch(update_channel),
-        )
-        .route(
-            "/{channel_id}",
-            delete(delete_channel),
-        );
+        .route("/inital", get(get_inital_channels))
+        .route("/{cursor}", get(get_channels_from))
+        .route("/{channel_id}/message", post(add_guild_message))
+        .route("/{channel_id}/message/inital", get(get_inital_messages))
+        .route("/{channel_id}/message/{cursor}", get(get_messages_from))
+        .route("/", post(add_guild_channel))
+        .route("/{channel_id}", patch(update_channel))
+        .route("/{channel_id}", delete(delete_channel));
 
     let guild: Router<AppState> = Router::new()
         .route("/", post(add_guild))
-        .route("/all", get(get_guilds))
-        .route("/invites", get(get_guild_invites))
+        .route("/inital", get(get_inital_guilds))
+        .route("/{cursor}", get(get_guilds_from))
+        .route("/invite/inital", get(get_inital_guild_invites))
+        .route("/invite/{cursor}", get(get_guild_invites_from))
+        .route("/{group_id}/member/inital", get(get_inital_guild_members))
+        .route("/{group_id}/member/{cursor}", get(get_guild_members_from))
         .route("/invite/{invite_id}", patch(manage_guild_invite))
-        .route("/{group_id}/members", get(get_guild_members))
         .route("/{group_id}/invite", post(invite_guild_member))
         .route("/{group_id}", delete(delete_guild))
         .route("/{group_id}", patch(update_guild))
@@ -169,13 +167,14 @@ async fn main() {
         .nest("/dm", dm)
         .nest("/guild", guild)
         /* ===== Groups ===== */
-        .route("/{group_id}/message/all", get(get_messages))
         .route("/{group_id}/message/{message_id}", patch(update_message))
         .route("/{group_id}/message/{message_id}", delete(delete_message));
 
     let relations: Router<AppState> = Router::new()
-        .route("/friends", get(get_friends))
-        .route("/invites", get(get_friend_invites))
+        .route("/friend/inital", get(get_inital_friends))
+        .route("/friend/{cursor}", get(get_friends_from))
+        .route("/invite/inital", get(get_inital_friend_invites))
+        .route("/invite/{cursor}", get(get_friend_invites_from))
         .route("/{user_id}/invite", post(create_friend_invite))
         .route("/invite/{user_id}", patch(manage_friend_invite))
         .route("/{user_id}", patch(update_relation))

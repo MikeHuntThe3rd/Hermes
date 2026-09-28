@@ -54,7 +54,7 @@ pub async fn update_self(
 
     let old_user: User = inf
         .ps_interface
-        .select(Some((&["id"], &[auth.user_id])))
+        .select(Some((&["id"], &[auth.user_id])), None)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?
         .into_iter()
@@ -124,10 +124,10 @@ pub async fn update_relation(
 
     let rels: Vec<Relation> = inf
         .ps_interface
-        .select(Some((
-            &["relating_user", "related_user"],
-            &[auth.user_id, user_id],
-        )))
+        .select(
+            Some((&["relating_user", "related_user"], &[auth.user_id, user_id])),
+            None,
+        )
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -159,7 +159,7 @@ pub async fn manage_guild_invite(
 ) -> Result<Res<()>, InternalError> {
     let invs: Vec<Guild_Invite> = inf
         .ps_interface
-        .select(Some((&["id"], &[invite_id])))
+        .select(Some((&["id"], &[invite_id])), None)
         .await
         .map_err(|_| InternalError::DbError)?;
 
@@ -202,7 +202,7 @@ pub async fn manage_dm_invite(
 ) -> Result<Res<()>, InternalError> {
     let invs: Vec<Dm_Invite> = inf
         .ps_interface
-        .select(Some((&["id"], &[invite_id])))
+        .select(Some((&["id"], &[invite_id])), None)
         .await
         .map_err(|_| InternalError::DbError)?;
 
@@ -242,10 +242,10 @@ pub async fn manage_friend_invite(
 ) -> Result<Res<()>, InternalError> {
     let invs: Vec<Relation> = inf
         .ps_interface
-        .select(Some((
-            &["relating_user", "related_user"],
-            &[user_id, auth.user_id],
-        )))
+        .select(
+            Some((&["relating_user", "related_user"], &[user_id, auth.user_id])),
+            None,
+        )
         .await
         .map_err(|_| InternalError::DbError)?;
 
@@ -299,7 +299,7 @@ pub async fn update_message(
 
     let msg: Message = inf
         .ps_interface
-        .select::<i32, Message>(Some((&["id"], &[message_id])))
+        .select::<i32, Message>(Some((&["id"], &[message_id])), None)
         .await
         .map_err(|e| GenericErr::Internal(e))?
         .into_iter()
@@ -330,7 +330,7 @@ pub async fn update_message(
 
     let old_objs_hash: HashSet<Uuid> = inf
         .ps_interface
-        .select(Some((&["message_id"], &[msg.id])))
+        .select(Some((&["message_id"], &[msg.id])), None)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?
         .into_iter()
@@ -372,32 +372,43 @@ pub async fn update_message(
     });
 }
 
-pub async fn update_channel(auth: AuthUser, State(inf): State<AppState>, Path((group_id, channel_id)): Path<(Uuid, Uuid)>, Json(data): Json<ChannelUpdate>) -> Result<Res<()>, GenericErr> {
+pub async fn update_channel(
+    auth: AuthUser,
+    State(inf): State<AppState>,
+    Path((group_id, channel_id)): Path<(Uuid, Uuid)>,
+    Json(data): Json<ChannelUpdate>,
+) -> Result<Res<()>, GenericErr> {
     let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
-    .await.map_err(|e| GenericErr::Internal(e))?;
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
     if member.rank < RankT::Admin {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    let channel: Channel = inf.ps_interface.select(Some((&["id"], &[channel_id])))
-    .await.map_err(|e| GenericErr::Internal(e))?
-    .into_iter()
-    .next()
-    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+    let channel: Channel = inf
+        .ps_interface
+        .select(Some((&["id"], &[channel_id])), None)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?
+        .into_iter()
+        .next()
+        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
-    inf.ps_interface.update(Channel {
-        id: channel.id,
-        group_id: group_id,
-        name: data.name,
-        category: channel.category
-    })
-    .await.map_err(|e| GenericErr::Internal(e))?;
+    inf.ps_interface
+        .update(Channel {
+            id: channel.id,
+            group_id: group_id,
+            name: data.name,
+            category: channel.category,
+        })
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
-    return Ok( Res{
+    return Ok(Res {
         status: StatusCode::OK,
         success: true,
         msg: String::new(),
-        data: None
+        data: None,
     });
 }

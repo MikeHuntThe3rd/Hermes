@@ -125,7 +125,7 @@ pub async fn add_dm(
     Path(member_id): Path<Uuid>,
 ) -> Result<Res<()>, InternalError> {
     inf.ps_interface
-        .select::<Uuid, User>(Some((&["id"], &[member_id])))
+        .select::<Uuid, User>(Some((&["id"], &[member_id])), None)
         .await?
         .into_iter()
         .next()
@@ -198,7 +198,7 @@ pub async fn add_guild_message(
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, InternalError> {
     inf.ps_interface
-        .select::<Uuid, Channel>(Some((&["id"], &[channel_id])))
+        .select::<Uuid, Channel>(Some((&["id"], &[channel_id])), None)
         .await?
         .into_iter()
         .next()
@@ -220,7 +220,7 @@ async fn add_message(
 
     let group: Group = inf
         .ps_interface
-        .select(Some((&["id"], &[group_id])))
+        .select(Some((&["id"], &[group_id])), None)
         .await?
         .into_iter()
         .next()
@@ -229,7 +229,7 @@ async fn add_message(
     if group.is_dm {
         let dm: Dm = inf
             .ps_interface
-            .select(Some((&["group_id"], &[group_id])))
+            .select(Some((&["group_id"], &[group_id])), None)
             .await?
             .into_iter()
             .next()
@@ -240,7 +240,10 @@ async fn add_message(
         }
     } else {
         inf.ps_interface
-            .select::<Uuid, Guild_Member>(Some((&["group_id", "member_id"], &[group_id, user_id])))
+            .select::<Uuid, Guild_Member>(
+                Some((&["group_id", "member_id"], &[group_id, user_id])),
+                None,
+            )
             .await?
             .into_iter()
             .next()
@@ -303,7 +306,10 @@ pub async fn invite_guild_member(
 
     let invs: Vec<Guild_Invite> = inf
         .ps_interface
-        .select(Some((&["group_id", "user_id"], &[group_id, data.user_id])))
+        .select(
+            Some((&["group_id", "user_id"], &[group_id, data.user_id])),
+            None,
+        )
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -317,7 +323,7 @@ pub async fn invite_guild_member(
 
     let usr: Vec<User> = inf
         .ps_interface
-        .select(Some((&["id"], &[data.user_id])))
+        .select(Some((&["id"], &[data.user_id])), None)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -360,7 +366,7 @@ pub async fn create_friend_invite(
 
     let user: Vec<User> = inf
         .ps_interface
-        .select(Some((&["id"], &[user_id])))
+        .select(Some((&["id"], &[user_id])), None)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -370,10 +376,10 @@ pub async fn create_friend_invite(
 
     let invs: Vec<Relation> = inf
         .ps_interface
-        .select(Some((
-            &["relating_user", "related_user"],
-            &[auth.user_id, user_id],
-        )))
+        .select(
+            Some((&["relating_user", "related_user"], &[auth.user_id, user_id])),
+            None,
+        )
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -415,7 +421,7 @@ pub async fn create_invite(
 ) -> Result<Res<InvJwt>, GenericErr> {
     let user: Vec<User> = inf
         .ps_interface
-        .select(Some((&["id"], &vec![auth.user_id])))
+        .select(Some((&["id"], &vec![auth.user_id])), None)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -538,7 +544,7 @@ pub async fn upload(
 
         let matches: Vec<Object> = inf
             .ps_interface
-            .select::<&str, Object>(Some((&["hash"], &[&hash])))
+            .select::<&str, Object>(Some((&["hash"], &[&hash])), None)
             .await
             .map_err(|_| cleanup_err(temp_path.clone(), InternalError::DbError))?;
 

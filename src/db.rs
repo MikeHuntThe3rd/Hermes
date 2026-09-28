@@ -66,14 +66,13 @@ impl PsInterface {
                 let inp = format!("${index}");
                 if i == 0 {
                     sepr_outer.push_unseparated(inp);
-                }
-                else {
+                } else {
                     sepr_outer.push(inp);
                 }
 
                 index += 1;
             });
-            
+
             sepr_outer.push_unseparated(")");
         }
 
@@ -84,8 +83,10 @@ impl PsInterface {
             query = generic.bind_values(query, BindVal::BASE);
         }
 
-        let res = query.fetch_all(&self.pool)
-        .await.map_err(|_| InternalError::DbError)?;
+        let res = query
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|_| InternalError::DbError)?;
 
         if res.is_empty() {
             let _msg = sqlx::Error::InvalidArgument("no rows were inserted".to_string());
@@ -131,8 +132,10 @@ impl PsInterface {
         sql.push(") RETURNING *;");
 
         let query = data.bind_values(sql.build_query_as::<T>(), BindVal::ALL);
-        let res = query.fetch_one(&self.pool)
-        .await.map_err(|_| InternalError::DbError)?;
+        let res = query
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 
@@ -162,12 +165,18 @@ impl PsInterface {
         for val in id_s {
             query = query.bind(val);
         }
-        let res = query.fetch_all(&self.pool)
-        .await.map_err(|_| InternalError::DbError)?;
+        let res = query
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 
-    pub async fn select<I, T>(&self, id_s: Option<(&[&str], &[I])>) -> Result<Vec<T>, InternalError>
+    pub async fn select<I, T>(
+        &self,
+        id_s: Option<(&[&str], &[I])>,
+        limit: Option<i32>,
+    ) -> Result<Vec<T>, InternalError>
     where
         I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>,
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
@@ -177,7 +186,9 @@ impl PsInterface {
 
         if let Some(some_id_s) = id_s {
             if some_id_s.0.len() != some_id_s.1.len() {
-                let _msg = sqlx::Error::InvalidArgument("given tuple arrays have different sizes".to_string());
+                let _msg = sqlx::Error::InvalidArgument(
+                    "given tuple arrays have different sizes".to_string(),
+                );
                 return Err(InternalError::DbError);
             }
 
@@ -195,13 +206,20 @@ impl PsInterface {
                 sepr.push_bind(param);
             });
 
-            sql.push(");");
-        } else {
-            sql.push(";");
+            sql.push(")");
         }
 
-        let res = sql.build_query_as::<T>().fetch_all(&self.pool)
-        .await.map_err(|_| InternalError::DbError)?;
+        if let Some(lm) = limit {
+            sql.push(" LIMIT ".to_string() + &lm.to_string());
+        }
+
+        sql.push(";");
+
+        let res = sql
+            .build_query_as::<T>()
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 
@@ -209,8 +227,10 @@ impl PsInterface {
         &self,
         query: Query<'_, Postgres, PgArguments>,
     ) -> Result<(), InternalError> {
-        query.execute(&self.pool)
-        .await.map_err(|_| InternalError::DbError)?;
+        query
+            .execute(&self.pool)
+            .await
+            .map_err(|_| InternalError::DbError)?;
         Ok(())
     }
 
@@ -221,8 +241,10 @@ impl PsInterface {
     where
         T: for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
-        let res = query.fetch_all(&self.pool)
-        .await.map_err(|_| InternalError::DbError)?;
+        let res = query
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 }

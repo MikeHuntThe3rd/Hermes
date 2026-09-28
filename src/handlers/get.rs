@@ -107,10 +107,7 @@ pub async fn get_guild_members(
     let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> =
         sqlx::query_as(sql).bind(group_id);
 
-    let users: Vec<StrippedMember> = inf
-        .ps_interface
-        .generic_fetch(query)
-        .await?;
+    let users: Vec<StrippedMember> = inf.ps_interface.generic_fetch(query).await?;
 
     if users.is_empty() {
         return Err(InternalError::NoMatches);
@@ -195,7 +192,7 @@ pub async fn get_guild_invites(
 ) -> Result<Res<Vec<Guild_Invite>>, InternalError> {
     let invs: Vec<Guild_Invite> = inf
         .ps_interface
-        .select(Some((&["user_id"], &[auth.user_id])))
+        .select(Some((&["user_id"], &[auth.user_id])), None)
         .await
         .map_err(|_| InternalError::DbError)?;
 
@@ -216,9 +213,8 @@ pub async fn get_dm_invites(
 ) -> Result<Res<Vec<Dm_Invite>>, InternalError> {
     let invs: Vec<Dm_Invite> = inf
         .ps_interface
-        .select(Some((&["user_id"], &[auth.user_id])))
-        .await
-        .map_err(|_| InternalError::DbError)?;
+        .select(Some((&["user_id"], &[auth.user_id])), None)
+        .await?;
 
     if invs.first().is_none() {
         return Err(InternalError::NoMatches);
@@ -268,7 +264,7 @@ pub async fn pull(
 ) -> Result<impl IntoResponse, InternalError> {
     let obj: Object = inf
         .ps_interface
-        .select::<Uuid, Object>(Some((Object::id_columns(), &[object_id])))
+        .select::<Uuid, Object>(Some((Object::id_columns(), &[object_id])), None)
         .await
         .map_err(|_| InternalError::DbError)?
         .into_iter()

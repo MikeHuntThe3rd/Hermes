@@ -90,7 +90,7 @@ pub async fn delete_dm(
 ) -> Result<Res<()>, GenericErr> {
     let dm: Dm = inf
         .ps_interface
-        .select(Some((&["group_id"], &[group_id])))
+        .select(Some((&["group_id"], &[group_id])), None)
         .await
         .map_err(|e| GenericErr::Internal(e))?
         .into_iter()
@@ -226,7 +226,7 @@ pub async fn delete_channel(
         .map_err(|e| GenericErr::Internal(e))?;
 
     inf.ps_interface
-        .select::<Uuid, Channel>(Some((&["id"], &[channel_id])))
+        .select::<Uuid, Channel>(Some((&["id"], &[channel_id])), None)
         .await
         .map_err(|e| GenericErr::Internal(e))?
         .into_iter()
