@@ -92,6 +92,21 @@ pub async fn get_channels_from(
     return get_channels(group_id, Some(cursor), state).await;
 }
 
+pub async fn get_inital_guilds(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Res<GuildsResponse>, InternalError> {
+    return get_guilds(auth.user_id, None, state).await;
+}
+
+pub async fn get_guilds_from(
+    auth: AuthUser,
+    Path(cursor): Path<Uuid>,
+    State(state): State<AppState>,
+) -> Result<Res<GuildsResponse>, InternalError> {
+    return get_guilds(auth.user_id, Some(cursor), state).await;
+}
+
 pub async fn pull(
     _auth: AuthUser,
     State(inf): State<AppState>,
@@ -159,7 +174,7 @@ async fn get_guilds(
             WHERE group_members.group_id = guilds.group_id
               AND group_members.member_id = $1
           )
-          AND $2 >guilds.id
+          AND $2 > guilds.id
         ORDER BY guilds.id DESC
         LIMIT 50;";
 
@@ -179,17 +194,28 @@ async fn get_guilds(
         sqlx::query_as(sql).bind(user_id)
     };
 
-    let groups = state.ps_interface.generic_fetch(query).await?;
+    let guilds = state.ps_interface.generic_fetch(query).await?;
 
-    if groups.is_empty() {
+    if guilds.is_empty() {
         return Err(InternalError::NoMatches);
     }
+
+    let cursor: Option<Uuid> = if guilds.len() == 50
+        && let Some(pin) = guilds.iter().next_back()
+    {
+        Some(pin.group_id)
+    } else {
+        None
+    };
 
     return Ok(Res {
         status: StatusCode::FOUND,
         success: true,
         msg: String::new(),
-        data: Some(groups),
+        data: Some(GuildsResponse {
+            cursor: cursor,
+            pages: guilds,
+        }),
     });
 }
 
