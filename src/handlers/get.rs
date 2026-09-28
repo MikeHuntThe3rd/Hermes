@@ -21,6 +21,13 @@ pub struct FullMsg {
 }
 
 #[derive(Serialize)]
+pub struct StrippedChannel {
+    pub id: Uuid,
+    pub name: String,
+    pub category: ChannelT,
+}
+
+#[derive(Serialize)]
 pub struct Page {
     pub file_ids: Vec<Uuid>,
     pub message: Option<String>,
@@ -33,6 +40,80 @@ pub struct MsgResponse {
     pub cursor: String,
     pub pages: Vec<Page>,
 }
+
+#[derive(Serialize)]
+pub struct DmInvitesResponse {
+    pub cursor: Option<Uuid>,
+    pub pages: Vec<Dm_Invite>,
+}
+
+#[derive(Serialize)]
+pub struct ChannelsResponse {
+    pub cursor: Option<Uuid>,
+    pub pages: Vec<StrippedChannel>,
+}
+
+#[derive(Serialize)]
+pub struct GuildsResponse {
+    pub cursor: Option<Uuid>,
+    pub pages: Vec<Guild>,
+}
+
+/* ===== Handlers ===== */
+
+pub async fn get_inital_dm_invites(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Res<DmInvitesResponse>, InternalError> {
+    return get_dm_invites(auth.user_id, None, state).await;
+}
+
+pub async fn get_dm_invites_from(
+    auth: AuthUser,
+    Path(cursor): Path<Uuid>,
+    State(state): State<AppState>,
+) -> Result<Res<DmInvitesResponse>, InternalError> {
+    return get_dm_invites(auth.user_id, Some(cursor), state).await;
+}
+
+pub async fn get_inital_channels(
+    _auth: AuthUser,
+    Path(group_id): Path<Uuid>,
+    State(state): State<AppState>,
+) -> Result<Res<ChannelsResponse>, InternalError> {
+    return get_channels(group_id, None, state).await;
+}
+
+pub async fn get_channels_from(
+    _auth: AuthUser,
+    Path((group_id, cursor)): Path<(Uuid, Uuid)>,
+    State(state): State<AppState>,
+) -> Result<Res<ChannelsResponse>, InternalError> {
+    return get_channels(group_id, Some(cursor), state).await;
+}
+
+pub async fn pull(
+    _auth: AuthUser,
+    State(inf): State<AppState>,
+    Path(object_id): Path<Uuid>,
+) -> Result<impl IntoResponse, InternalError> {
+    let obj: Object = inf
+        .ps_interface
+        .select::<Uuid, Object>(Some((Object::id_columns(), &[object_id])), None)
+        .await
+        .map_err(|_| InternalError::DbError)?
+        .into_iter()
+        .next()
+        .ok_or(InternalError::NoMatches)?;
+
+    Ok(Response::builder()
+        .header("X-Accel-Redirect", format!("/files/objs/{}", obj.rel_path))
+        .header("Content-Type", obj.mime_type)
+        .body(Body::empty())
+        .map_err(|_| InternalError::OperationsError)?)
+}
+
+/* ===== Functions ===== */
 
 pub async fn get_friends(
     auth: AuthUser,
@@ -64,23 +145,43 @@ pub async fn get_friends(
     });
 }
 
-pub async fn get_guilds(
-    auth: AuthUser,
-    State(inf): State<AppState>,
-) -> Result<Res<Vec<Group>>, InternalError> {
-    let sql: &'static str = "SELECT * FROM groups 
-    JOIN group_members ON group_members.group_id = groups.id 
-    WHERE group_members.member_id = $1;";
+async fn get_guilds(
+    user_id: Uuid,
+    cursor: Option<Uuid>,
+    state: AppState,
+) -> Result<Res<GuildsResponse>, InternalError> {
+    let query: QueryAs<'_, Postgres, Guild, PgArguments> = if let Some(pin) = cursor {
+        let sql: &'static str = "SELECT guilds.*
+        FROM guilds
+        WHERE EXISTS (
+            SELECT 1
+            FROM group_members
+            WHERE group_members.group_id = guilds.group_id
+              AND group_members.member_id = $1
+          )
+          AND $2 >guilds.id
+        ORDER BY guilds.id DESC
+        LIMIT 50;";
 
-    let query: QueryAs<'_, Postgres, Group, PgArguments> = sqlx::query_as(sql).bind(auth.user_id);
+        sqlx::query_as(sql).bind(user_id).bind(pin)
+    } else {
+        let sql: &'static str = "SELECT guilds.*
+        FROM guilds
+        WHERE EXISTS (
+            SELECT 1
+            FROM group_members
+            WHERE group_members.group_id = guilds.group_id
+              AND group_members.member_id = $1
+          )
+        ORDER BY guilds.id DESC
+        LIMIT 50;";
 
-    let groups = inf
-        .ps_interface
-        .generic_fetch(query)
-        .await
-        .map_err(|_| InternalError::DbError)?;
+        sqlx::query_as(sql).bind(user_id)
+    };
 
-    if groups.len() < 1 {
+    let groups = state.ps_interface.generic_fetch(query).await?;
+
+    if groups.is_empty() {
         return Err(InternalError::NoMatches);
     }
 
@@ -89,6 +190,62 @@ pub async fn get_guilds(
         success: true,
         msg: String::new(),
         data: Some(groups),
+    });
+}
+
+async fn get_channels(
+    group_id: Uuid,
+    cursor: Option<Uuid>,
+    state: AppState,
+) -> Result<Res<ChannelsResponse>, InternalError> {
+    let channels: Vec<StrippedChannel> = if let Some(pin) = cursor {
+        let sql: &'static str = "SELECT * FROM channels WHERE $1 > channels.id LIMIT 50;";
+        let query: QueryAs<'_, Postgres, Channel, PgArguments> = sqlx::query_as(sql).bind(pin);
+        state
+            .ps_interface
+            .generic_fetch(query)
+            .await?
+            .into_iter()
+            .map(|chnl| StrippedChannel {
+                id: chnl.id,
+                name: chnl.name,
+                category: chnl.category,
+            })
+            .collect()
+    } else {
+        state
+            .ps_interface
+            .select::<Uuid, Channel>(Some((&["group_id"], &[group_id])), Some(50))
+            .await?
+            .into_iter()
+            .map(|chnl| StrippedChannel {
+                id: chnl.id,
+                name: chnl.name,
+                category: chnl.category,
+            })
+            .collect()
+    };
+
+    if channels.is_empty() {
+        return Err(InternalError::NoMatches);
+    }
+
+    let cursor: Option<Uuid> = if channels.len() == 50
+        && let Some(back) = channels.iter().next_back()
+    {
+        Some(back.id)
+    } else {
+        None
+    };
+
+    return Ok(Res {
+        status: StatusCode::OK,
+        success: true,
+        msg: String::new(),
+        data: Some(ChannelsResponse {
+            cursor: cursor,
+            pages: channels,
+        }),
     });
 }
 
@@ -207,23 +364,41 @@ pub async fn get_guild_invites(
     });
 }
 
-pub async fn get_dm_invites(
-    auth: AuthUser,
-    State(inf): State<AppState>,
-) -> Result<Res<Vec<Dm_Invite>>, InternalError> {
-    let invs: Vec<Dm_Invite> = inf
-        .ps_interface
-        .select(Some((&["user_id"], &[auth.user_id])), None)
-        .await?;
+async fn get_dm_invites(
+    user_id: Uuid,
+    cursor: Option<Uuid>,
+    inf: AppState,
+) -> Result<Res<DmInvitesResponse>, InternalError> {
+    let invites: Vec<Dm_Invite> = if let Some(pin) = cursor {
+        let sql: &'static str = "SELECT * FROM dm_invites WHERE $1 > dm_invites.id LIMIT 50;";
+        let query: QueryAs<'_, Postgres, Dm_Invite, PgArguments> = sqlx::query_as(sql).bind(pin);
+        inf.ps_interface.generic_fetch(query).await?
+    } else {
+        inf.ps_interface
+            .select(Some((&["user_id"], &[user_id])), None)
+            .await?
+    };
 
-    if invs.first().is_none() {
+    if invites.is_empty() {
         return Err(InternalError::NoMatches);
     }
+
+    let cursor: Option<Uuid> = if invites.len() == 50
+        && let Some(back) = invites.iter().next_back()
+    {
+        Some(back.id)
+    } else {
+        None
+    };
+
     return Ok(Res {
         status: StatusCode::FOUND,
         success: true,
         msg: String::new(),
-        data: Some(invs),
+        data: Some(DmInvitesResponse {
+            cursor: cursor,
+            pages: invites,
+        }),
     });
 }
 
@@ -255,25 +430,4 @@ pub async fn get_friend_invites(
         msg: String::new(),
         data: Some(users),
     });
-}
-
-pub async fn pull(
-    _auth: AuthUser,
-    State(inf): State<AppState>,
-    Path(object_id): Path<Uuid>,
-) -> Result<impl IntoResponse, InternalError> {
-    let obj: Object = inf
-        .ps_interface
-        .select::<Uuid, Object>(Some((Object::id_columns(), &[object_id])), None)
-        .await
-        .map_err(|_| InternalError::DbError)?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
-
-    Ok(Response::builder()
-        .header("X-Accel-Redirect", format!("/files/objs/{}", obj.rel_path))
-        .header("Content-Type", obj.mime_type)
-        .body(Body::empty())
-        .map_err(|_| InternalError::OperationsError)?)
 }

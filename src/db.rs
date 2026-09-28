@@ -206,7 +206,12 @@ impl PsInterface {
                 sepr.push_bind(param);
             });
 
-            sql.push(")");
+            sql.push(") ORDER BY ");
+
+            let mut sepr = sql.separated(", ");
+            for id in some_id_s.0 {
+                sepr.push(T::table_name().to_string() + "." + id + " DESC");
+            }
         }
 
         if let Some(lm) = limit {

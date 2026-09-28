@@ -123,7 +123,7 @@ async fn main() {
         .route("/sign_up", post(sign_up));
 
     let dm: Router<AppState> = Router::new()
-        .route("/new/member/{member_id}", post(add_dm))
+        .route("/member/{member_id}", post(add_dm))
         .route("/invite/inital", get(get_inital_dm_invites))
         .route("/invite/{cursor}", get(get_dm_invites_from))
         .route("/invite/{invite_id}", patch(manage_dm_invite))
