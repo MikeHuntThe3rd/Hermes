@@ -71,6 +71,15 @@ pub struct GuildMembersResponse {
     pub pages: Vec<StrippedMember>,
 }
 
+#[derive(Serialize)]
+pub struct StrippedUserResponse {
+    pub cursor: Option<Uuid>,
+    pub pages: Vec<StrippedUser>,
+}
+
+pub type RelationInvitesResponse = StrippedUserResponse;
+pub type RelationsResponse = StrippedUserResponse;
+
 /* ===== Handlers ===== */
 
 pub async fn get_inital_dm_invites(
@@ -150,6 +159,36 @@ pub async fn get_guild_members_from(
     return get_guild_members(group_id, Some(cursor), state).await;
 }
 
+pub async fn get_inital_friend_invites(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Res<RelationInvitesResponse>, InternalError> {
+    return get_friend_invites(auth.user_id, None, state).await;
+}
+
+pub async fn get_friend_invites_from(
+    auth: AuthUser,
+    Path(cursor): Path<Uuid>,
+    State(state): State<AppState>,
+) -> Result<Res<RelationInvitesResponse>, InternalError> {
+    return get_friend_invites(auth.user_id, Some(cursor), state).await;
+}
+
+pub async fn get_inital_friends(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Res<RelationsResponse>, InternalError> {
+    return get_friends(auth.user_id, None, state).await;
+}
+
+pub async fn get_friends_from(
+    auth: AuthUser,
+    Path(cursor): Path<Uuid>,
+    State(state): State<AppState>,
+) -> Result<Res<RelationsResponse>, InternalError> {
+    return get_friends(auth.user_id, Some(cursor), state).await;
+}
+
 pub async fn pull(
     _auth: AuthUser,
     State(inf): State<AppState>,
@@ -173,33 +212,57 @@ pub async fn pull(
 
 /* ===== Functions ===== */
 
-pub async fn get_friends(
-    auth: AuthUser,
-    State(inf): State<AppState>,
-) -> Result<Res<Vec<StrippedMember>>, InternalError> {
-    let sql: &'static str = "SELECT * FROM users 
-    JOIN relations ON relations.related_user = users.id 
-    WHERE relations.relating_user = $1 AND relations.state = $2;";
+async fn get_friends(
+    user_id: Uuid,
+    cursor: Option<Uuid>,
+    state: AppState,
+) -> Result<Res<RelationsResponse>, InternalError> {
+    let friends: Vec<StrippedUser> = if let Some(pin) = cursor {
+        let sql: &'static str = "SELECT AS user_id, AS nickname, AS pfp FROM users 
+        JOIN relations ON relations.related_user = users.id 
+        WHERE (relations.relating_user, relations.state) = ($1, $2) AND $3 > users.id
+        ORDER BY users.id DESC
+        LIMIT 50;";
 
-    let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> = sqlx::query_as(sql)
-        .bind(auth.user_id)
-        .bind(RelationT::Friends);
+        let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> = sqlx::query_as(sql)
+            .bind(user_id)
+            .bind(RelationT::Friends)
+            .bind(pin);
 
-    let users: Vec<StrippedMember> = inf
-        .ps_interface
-        .generic_fetch(query)
-        .await
-        .map_err(|_| InternalError::DbError)?;
+        state.ps_interface.generic_fetch(query).await?
+    } else {
+        let sql: &'static str = "SELECT AS user_id, AS nickname, AS pfp FROM users 
+        JOIN relations ON relations.related_user = users.id 
+        WHERE (relations.relating_user, relations.state) = ($1, $2)
+        ORDER BY users.id DESC
+        LIMIT 50;";
 
-    if users.len() < 1 {
+        let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> =
+            sqlx::query_as(sql).bind(user_id).bind(RelationT::Friends);
+
+        state.ps_interface.generic_fetch(query).await?
+    };
+
+    if friends.is_empty() {
         return Err(InternalError::NoMatches);
     }
+
+    let cursor: Option<Uuid> = if friends.len() == 50
+        && let Some(pin) = friends.iter().next_back()
+    {
+        Some(pin.user_id)
+    } else {
+        None
+    };
 
     return Ok(Res {
         status: StatusCode::FOUND,
         success: true,
         msg: String::new(),
-        data: Some(users),
+        data: Some(RelationsResponse {
+            cursor: cursor,
+            pages: friends,
+        }),
     });
 }
 
@@ -514,31 +577,51 @@ async fn get_dm_invites(
 }
 
 pub async fn get_friend_invites(
-    auth: AuthUser,
-    State(inf): State<AppState>,
-) -> Result<Res<Vec<StrippedUser>>, InternalError> {
-    let sql: &'static str = "SELECT users.id AS user_id, nickname, pfp FROM users 
-    JOIN relations ON relations.related_user = users.id 
-    WHERE relations.state = $1 AND users.id = $2;";
+    user_id: Uuid,
+    cursor: Option<Uuid>,
+    state: AppState,
+) -> Result<Res<RelationInvitesResponse>, InternalError> {
+    let invites: Vec<StrippedUser> = if let Some(pin) = cursor {
+        let sql: &'static str = "SELECT users.id AS user_id, nickname, pfp FROM users 
+        JOIN relations ON relations.related_user = users.id 
+        WHERE (relations.state, users.id) = ($1, $2) AND $3 > users.id;";
 
-    let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> = sqlx::query_as(sql)
-        .bind(RelationT::Pending)
-        .bind(auth.user_id);
+        let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> = sqlx::query_as(sql)
+            .bind(RelationT::Pending)
+            .bind(user_id)
+            .bind(pin);
 
-    let users = inf
-        .ps_interface
-        .generic_fetch(query)
-        .await
-        .map_err(|_| InternalError::DbError)?;
+        state.ps_interface.generic_fetch(query).await?
+    } else {
+        let sql: &'static str = "SELECT users.id AS user_id, nickname, pfp FROM users 
+        JOIN relations ON relations.related_user = users.id 
+        WHERE (relations.state, users.id) = ($1, $2);";
 
-    if users.first().is_none() {
+        let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> =
+            sqlx::query_as(sql).bind(RelationT::Pending).bind(user_id);
+
+        state.ps_interface.generic_fetch(query).await?
+    };
+
+    if invites.is_empty() {
         return Err(InternalError::NoMatches);
     }
+
+    let cursor: Option<Uuid> = if invites.len() == 50
+        && let Some(pin) = invites.iter().next_back()
+    {
+        Some(pin.user_id)
+    } else {
+        None
+    };
 
     return Ok(Res {
         status: StatusCode::OK,
         success: true,
         msg: String::new(),
-        data: Some(users),
+        data: Some(RelationInvitesResponse {
+            cursor: cursor,
+            pages: invites,
+        }),
     });
 }
