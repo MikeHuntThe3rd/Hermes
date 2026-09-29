@@ -59,6 +59,18 @@ pub struct GuildsResponse {
     pub pages: Vec<Guild>,
 }
 
+#[derive(Serialize)]
+pub struct GuildInvitesResponse {
+    pub cursor: Option<Uuid>,
+    pub pages: Vec<Guild_Invite>,
+}
+
+#[derive(Serialize)]
+pub struct GuildMembersResponse {
+    pub cursor: Option<Uuid>,
+    pub pages: Vec<StrippedMember>,
+}
+
 /* ===== Handlers ===== */
 
 pub async fn get_inital_dm_invites(
@@ -105,6 +117,37 @@ pub async fn get_guilds_from(
     State(state): State<AppState>,
 ) -> Result<Res<GuildsResponse>, InternalError> {
     return get_guilds(auth.user_id, Some(cursor), state).await;
+}
+
+pub async fn get_inital_guild_invites(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Res<GuildInvitesResponse>, InternalError> {
+    return get_guild_invites(auth.user_id, None, state).await;
+}
+
+pub async fn get_guild_invites_from(
+    auth: AuthUser,
+    Path(cursor): Path<Uuid>,
+    State(state): State<AppState>,
+) -> Result<Res<GuildInvitesResponse>, InternalError> {
+    return get_guild_invites(auth.user_id, Some(cursor), state).await;
+}
+
+pub async fn get_inital_guild_members(
+    _auth: AuthUser,
+    Path(group_id): Path<Uuid>,
+    State(state): State<AppState>,
+) -> Result<Res<GuildMembersResponse>, InternalError> {
+    return get_guild_members(group_id, None, state).await;
+}
+
+pub async fn get_guild_members_from(
+    _auth: AuthUser,
+    Path((group_id, cursor)): Path<(Uuid, Uuid)>,
+    State(state): State<AppState>,
+) -> Result<Res<GuildMembersResponse>, InternalError> {
+    return get_guild_members(group_id, Some(cursor), state).await;
 }
 
 pub async fn pull(
@@ -225,7 +268,8 @@ async fn get_channels(
     state: AppState,
 ) -> Result<Res<ChannelsResponse>, InternalError> {
     let channels: Vec<StrippedChannel> = if let Some(pin) = cursor {
-        let sql: &'static str = "SELECT * FROM channels WHERE $1 > channels.id LIMIT 50;";
+        let sql: &'static str =
+            "SELECT * FROM channels WHERE $1 > channels.id ORDER BY channels.id DESC LIMIT 50;";
         let query: QueryAs<'_, Postgres, Channel, PgArguments> = sqlx::query_as(sql).bind(pin);
         state
             .ps_interface
@@ -275,32 +319,55 @@ async fn get_channels(
     });
 }
 
-pub async fn get_guild_members(
-    _auth: AuthUser,
-    State(inf): State<AppState>,
-    Path(group_id): Path<Uuid>,
-) -> Result<Res<Vec<StrippedMember>>, InternalError> {
-    let sql: &'static str =
-        "SELECT id AS user_id, nickname, pfp, group_members.rank AS rank FROM users 
-        JOIN group_members ON group_members.member_id = users.id 
-        WHERE group_members.group_id = $1;";
+async fn get_guild_members(
+    group_id: Uuid,
+    cursor: Option<Uuid>,
+    state: AppState,
+) -> Result<Res<GuildMembersResponse>, InternalError> {
+    fetch_group(state.clone(), &group_id).await?;
 
-    fetch_group(inf.clone(), &group_id).await?;
+    let members: Vec<StrippedMember> = if let Some(pin) = cursor {
+        let sql: &'static str =
+            "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp, group_members.rank AS rank FROM users 
+            JOIN group_members ON group_members.member_id = users.id 
+            WHERE group_members.group_id = $1 AND $2 > users.id
+            ORDER BY users.id DESC
+            LIMIT 50;";
+        let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> =
+            sqlx::query_as(sql).bind(group_id).bind(pin);
+        state.ps_interface.generic_fetch(query).await?
+    } else {
+        let sql: &'static str =
+            "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp, group_members.rank AS rank FROM users 
+            JOIN group_members ON group_members.member_id = users.id 
+            WHERE group_members.group_id = $1
+            ORDER BY users.id DESC
+            LIMIT 50;";
+        let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> =
+            sqlx::query_as(sql).bind(group_id);
+        state.ps_interface.generic_fetch(query).await?
+    };
 
-    let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> =
-        sqlx::query_as(sql).bind(group_id);
-
-    let users: Vec<StrippedMember> = inf.ps_interface.generic_fetch(query).await?;
-
-    if users.is_empty() {
+    if members.is_empty() {
         return Err(InternalError::NoMatches);
     }
 
+    let cursor: Option<Uuid> = if members.len() == 50
+        && let Some(pin) = members.iter().next_back()
+    {
+        Some(pin.user_id)
+    } else {
+        None
+    };
+
     return Ok(Res {
-        status: StatusCode::FOUND,
+        status: StatusCode::OK,
         success: true,
         msg: String::new(),
-        data: Some(users),
+        data: Some(GuildMembersResponse {
+            cursor: cursor,
+            pages: members,
+        }),
     });
 }
 
@@ -369,24 +436,42 @@ pub async fn get_messages(
     }
 }
 
-pub async fn get_guild_invites(
-    auth: AuthUser,
-    State(inf): State<AppState>,
-) -> Result<Res<Vec<Guild_Invite>>, InternalError> {
-    let invs: Vec<Guild_Invite> = inf
-        .ps_interface
-        .select(Some((&["user_id"], &[auth.user_id])), None)
-        .await
-        .map_err(|_| InternalError::DbError)?;
+async fn get_guild_invites(
+    user_id: Uuid,
+    cursor: Option<Uuid>,
+    state: AppState,
+) -> Result<Res<GuildInvitesResponse>, InternalError> {
+    let invites: Vec<Guild_Invite> = if let Some(pin) = cursor {
+        let sql: &'static str = "SELECT * FROM guild_invites WHERE $1 > guild_invites.id ORDER BY guild_invites.id DESC LIMIT 50;";
+        let query: QueryAs<'_, Postgres, Guild_Invite, PgArguments> = sqlx::query_as(sql).bind(pin);
+        state.ps_interface.generic_fetch(query).await?
+    } else {
+        state
+            .ps_interface
+            .select(Some((&["user_id"], &[user_id])), Some(50))
+            .await?
+    };
 
-    if invs.first().is_none() {
+    if invites.is_empty() {
         return Err(InternalError::NoMatches);
     }
+
+    let cursor: Option<Uuid> = if invites.len() == 50
+        && let Some(pin) = invites.iter().next_back()
+    {
+        Some(pin.id)
+    } else {
+        None
+    };
+
     return Ok(Res {
         status: StatusCode::FOUND,
         success: true,
         msg: String::new(),
-        data: Some(invs),
+        data: Some(GuildInvitesResponse {
+            cursor: cursor,
+            pages: invites,
+        }),
     });
 }
 
@@ -396,7 +481,7 @@ async fn get_dm_invites(
     inf: AppState,
 ) -> Result<Res<DmInvitesResponse>, InternalError> {
     let invites: Vec<Dm_Invite> = if let Some(pin) = cursor {
-        let sql: &'static str = "SELECT * FROM dm_invites WHERE $1 > dm_invites.id LIMIT 50;";
+        let sql: &'static str = "SELECT * FROM dm_invites WHERE $1 > dm_invites.id ORDER BY dm_invites.id DESC LIMIT 50;";
         let query: QueryAs<'_, Postgres, Dm_Invite, PgArguments> = sqlx::query_as(sql).bind(pin);
         inf.ps_interface.generic_fetch(query).await?
     } else {
