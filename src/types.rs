@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Postgres, postgres::PgArguments, query::QueryAs};
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
+
 /* ===== CONSTS ===== */
 
 pub const TEMP_PTH_STR: &'static str = "/var/lib/hermes_objs/temp/";
@@ -125,32 +126,25 @@ pub struct User {
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "id"]
-pub struct Group {
-    pub id: Uuid,
-    pub is_dm: bool,
-}
-
-#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
-#[ids = "group_id"]
 pub struct Guild {
-    pub group_id: Uuid,
+    pub id: Uuid,
     pub name: String,
     pub gp: Option<Uuid>,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
-#[ids = "group_id"]
+#[ids = "id"]
 pub struct Channel {
     pub id: Uuid,
-    pub group_id: Uuid,
+    pub guild_id: Uuid,
     pub name: String,
     pub category: ChannelT,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
-#[ids = "group_id"]
+#[ids = "id"]
 pub struct Dm {
-    pub group_id: Uuid,
+    pub id: Uuid,
     pub user_a: Option<Uuid>,
     pub user_b: Option<Uuid>,
 }
@@ -159,7 +153,7 @@ pub struct Dm {
 #[ids = "id"]
 pub struct Guild_Invite {
     pub id: Uuid,
-    pub group_id: Uuid,
+    pub guild_id: Uuid,
     pub user_id: Uuid,
     pub rank: RankT,
 }
@@ -168,26 +162,34 @@ pub struct Guild_Invite {
 #[ids = "id"]
 pub struct Dm_Invite {
     pub id: Uuid,
-    pub group_id: Uuid,
+    pub dm_id: Uuid,
     pub user_id: Uuid,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
-#[ids = "group_id;member_id"]
+#[ids = "guild_id;member_id"]
 #[include_ids(true)]
 pub struct Guild_Member {
-    pub group_id: Uuid,
+    pub guild_id: Uuid,
     pub member_id: Uuid,
     pub rank: RankT,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "id"]
-pub struct Message {
-    pub id: i32,
+pub struct Dm_Message {
+    pub id: i64,
+    pub dm_id: Uuid,
     pub message: Option<String>,
-    pub group_id: Uuid,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "id"]
+pub struct Guild_Message {
+    pub id: i64,
     pub channel_id: Option<Uuid>,
+    pub message: Option<String>,
     pub user_id: Option<Uuid>,
 }
 
@@ -205,8 +207,16 @@ pub struct Object {
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
 #[ids = "message_id;object_id"]
 #[include_ids(true)]
-pub struct Message_Object {
-    pub message_id: i32,
+pub struct Dm_Message_Object {
+    pub message_id: i64,
+    pub object_id: Uuid,
+}
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]
+#[ids = "message_id;object_id"]
+#[include_ids(true)]
+pub struct Guild_Message_Object {
+    pub message_id: i64,
     pub object_id: Uuid,
 }
 

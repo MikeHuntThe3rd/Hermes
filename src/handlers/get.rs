@@ -309,7 +309,7 @@ async fn get_guilds(
     let cursor: Option<Uuid> = if guilds.len() == 50
         && let Some(pin) = guilds.iter().next_back()
     {
-        Some(pin.group_id)
+        Some(pin.id)
     } else {
         None
     };
