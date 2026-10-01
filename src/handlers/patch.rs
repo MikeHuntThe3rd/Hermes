@@ -7,7 +7,7 @@ use sqlx::{Postgres, query};
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::handlers::{Msg, StrippedGroup, fetch_group_member};
+use crate::handlers::{StrippedGroup, fetch_guild_member};
 use crate::{
     auth::extractor::AuthUser,
     responses::error_t::{AuthError, GenericErr, InternalError},
@@ -84,10 +84,10 @@ pub async fn update_self(
 pub async fn update_guild(
     auth: AuthUser,
     State(inf): State<AppState>,
-    Path(group_id): Path<Uuid>,
+    Path(guild_id): Path<Uuid>,
     Json(data): Json<StrippedGroup>,
 ) -> Result<Res<()>, GenericErr> {
-    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    let member = fetch_guild_member(inf.clone(), &guild_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 

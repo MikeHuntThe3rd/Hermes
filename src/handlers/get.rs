@@ -191,10 +191,10 @@ pub async fn get_friends_from(
 
 pub async fn pull(
     _auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     Path(object_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, InternalError> {
-    let obj: Object = inf
+    let obj: Object = state
         .ps_interface
         .select::<Uuid, Object>(Some((Object::id_columns(), &[object_id])), None)
         .await
@@ -383,11 +383,14 @@ async fn get_channels(
 }
 
 async fn get_guild_members(
-    group_id: Uuid,
+    guild_id: Uuid,
     cursor: Option<Uuid>,
     state: AppState,
 ) -> Result<Res<GuildMembersResponse>, InternalError> {
-    fetch_group(state.clone(), &group_id).await?;
+    state
+        .ps_interface
+        .select::<Uuid, Guild>(Some((&["id"], &[guild_id])), Some(1))
+        .await?;
 
     let members: Vec<StrippedMember> = if let Some(pin) = cursor {
         let sql: &'static str =
@@ -397,7 +400,7 @@ async fn get_guild_members(
             ORDER BY users.id DESC
             LIMIT 50;";
         let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> =
-            sqlx::query_as(sql).bind(group_id).bind(pin);
+            sqlx::query_as(sql).bind(guild_id).bind(pin);
         state.ps_interface.generic_fetch(query).await?
     } else {
         let sql: &'static str =
@@ -407,7 +410,7 @@ async fn get_guild_members(
             ORDER BY users.id DESC
             LIMIT 50;";
         let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> =
-            sqlx::query_as(sql).bind(group_id);
+            sqlx::query_as(sql).bind(guild_id);
         state.ps_interface.generic_fetch(query).await?
     };
 
@@ -436,7 +439,7 @@ async fn get_guild_members(
 
 pub async fn get_messages(
     auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     Path(group_id): Path<Uuid>,
 ) -> Result<Res<MsgResponse>, InternalError> {
     let sql: &'static str = "SELECT 
@@ -453,11 +456,11 @@ pub async fn get_messages(
     ORDER BY messages.id DESC
     LIMIT 50;";
 
-    fetch_group_member(inf.clone(), &group_id, &auth.user_id).await?;
+    fetch_guild_member(state.clone(), &group_id, &auth.user_id).await?;
 
     let query: QueryAs<'_, Postgres, FullMsg, PgArguments> = sqlx::query_as(sql).bind(group_id);
 
-    let messages = inf
+    let messages = state
         .ps_interface
         .generic_fetch(query)
         .await
@@ -541,14 +544,15 @@ async fn get_guild_invites(
 async fn get_dm_invites(
     user_id: Uuid,
     cursor: Option<Uuid>,
-    inf: AppState,
+    state: AppState,
 ) -> Result<Res<DmInvitesResponse>, InternalError> {
     let invites: Vec<Dm_Invite> = if let Some(pin) = cursor {
         let sql: &'static str = "SELECT * FROM dm_invites WHERE $1 > dm_invites.id ORDER BY dm_invites.id DESC LIMIT 50;";
         let query: QueryAs<'_, Postgres, Dm_Invite, PgArguments> = sqlx::query_as(sql).bind(pin);
-        inf.ps_interface.generic_fetch(query).await?
+        state.ps_interface.generic_fetch(query).await?
     } else {
-        inf.ps_interface
+        state
+            .ps_interface
             .select(Some((&["user_id"], &[user_id])), None)
             .await?
     };

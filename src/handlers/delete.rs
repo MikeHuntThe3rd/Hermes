@@ -5,13 +5,13 @@ use sqlx::query::QueryAs;
 use sqlx::{Postgres, query_as};
 use uuid::Uuid;
 
-use crate::handlers::fetch_group_member;
+use crate::handlers::fetch_guild_member;
 use crate::responses::error_t::{AuthError, GenericErr, InternalError};
 use crate::{auth::extractor::AuthUser, types::*};
 
 pub async fn delete_self(
     auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
 ) -> Result<Res<()>, InternalError> {
     let sql: &'static str = "SELECT * FROM groups
     JOIN group_members gm ON gm.group_id = groups.id
@@ -21,20 +21,20 @@ pub async fn delete_self(
         WHERE gm2.group_id = groups.id AND gm2.rank = $2
     ) = 1;";
 
-    let query: QueryAs<'_, Postgres, Group, PgArguments> =
+    let query: QueryAs<'_, Postgres, Guild, PgArguments> =
         query_as(sql).bind(auth.user_id).bind(RankT::Owner);
 
-    let orphan_groups = inf
+    let orphan_guilds = state
         .ps_interface
         .generic_fetch(query)
         .await
         .map_err(|_| InternalError::DbError)?;
 
-    if !orphan_groups.is_empty() {
+    if !orphan_guilds.is_empty() {
         return Err(InternalError::DetachingOperation);
     }
 
-    let deletes = inf
+    let deletes = state
         .ps_interface
         .delete::<Uuid, User>(&vec![auth.user_id])
         .await
@@ -54,10 +54,10 @@ pub async fn delete_self(
 
 pub async fn delete_guild(
     auth: AuthUser,
-    State(inf): State<AppState>,
-    Path(group_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Path(guild_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
-    let rank: Guild_Member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    let rank: Guild_Member = fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
@@ -65,13 +65,13 @@ pub async fn delete_guild(
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    let deletes = inf
+    let delete = state
         .ps_interface
-        .delete::<Uuid, Group>(&vec![group_id])
+        .delete::<Uuid, Guild>(&vec![guild_id])
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    if !deletes.is_empty() {
+    if !delete.is_empty() {
         return Ok(Res {
             status: StatusCode::OK,
             success: true,
@@ -85,12 +85,12 @@ pub async fn delete_guild(
 
 pub async fn delete_dm(
     auth: AuthUser,
-    State(inf): State<AppState>,
-    Path(group_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Path(dm_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
-    let dm: Dm = inf
+    let dm: Dm = state
         .ps_interface
-        .select(Some((&["group_id"], &[group_id])), None)
+        .select(Some((&["id"], &[dm_id])), None)
         .await
         .map_err(|e| GenericErr::Internal(e))?
         .into_iter()
@@ -101,13 +101,13 @@ pub async fn delete_dm(
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    let deletes = inf
+    let delete = state
         .ps_interface
-        .delete::<Uuid, Group>(&vec![group_id])
+        .delete::<Uuid, Dm>(&vec![dm_id])
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    if !deletes.is_empty() {
+    if !delete.is_empty() {
         return Ok(Res {
             status: StatusCode::OK,
             success: true,
@@ -121,14 +121,14 @@ pub async fn delete_dm(
 
 pub async fn delete_guild_member(
     auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     Path(group_id): Path<Uuid>,
     Path(member_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
-    let caller = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    let caller = fetch_guild_member(state.clone(), &group_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
-    let recipient = fetch_group_member(inf.clone(), &group_id, &member_id)
+    let recipient = fetch_guild_member(state.clone(), &group_id, &member_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
@@ -136,7 +136,7 @@ pub async fn delete_guild_member(
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    let deletes: Vec<Guild_Member> = inf
+    let deletes: Vec<Guild_Member> = state
         .ps_interface
         .delete(&vec![group_id, member_id])
         .await
@@ -156,18 +156,20 @@ pub async fn delete_guild_member(
 
 pub async fn delete_relation(
     auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
     if auth.user_id == user_id {
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
     let (caller_to_user, user_to_caller): (Vec<Relation>, Vec<Relation>) = (
-        inf.ps_interface
+        state
+            .ps_interface
             .delete::<Uuid, Relation>(&[auth.user_id, user_id])
             .await
             .map_err(|_| GenericErr::Internal(InternalError::DbError))?,
-        inf.ps_interface
+        state
+            .ps_interface
             .delete::<Uuid, Relation>(&[user_id, auth.user_id])
             .await
             .map_err(|_| GenericErr::Internal(InternalError::DbError))?,
@@ -185,12 +187,13 @@ pub async fn delete_relation(
     });
 }
 
+//TODO: new dele ep for message del/updates
 pub async fn delete_message(
     auth: AuthUser,
-    State(inf): State<AppState>,
-    Path((group_id, message_id)): Path<(Uuid, i32)>,
+    State(state): State<AppState>,
+    Path((group_id, message_id)): Path<(Uuid, i64)>,
 ) -> Result<Res<()>, GenericErr> {
-    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    let member = fetch_guild_member(state.clone(), &group_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
@@ -198,9 +201,9 @@ pub async fn delete_message(
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    let deletes = inf
+    let deletes = state
         .ps_interface
-        .delete::<i32, Message>(&vec![message_id])
+        .delete::<i64, Dm_Message>(&vec![message_id])
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -218,14 +221,15 @@ pub async fn delete_message(
 
 pub async fn delete_channel(
     auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     Path((group_id, channel_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Res<()>, GenericErr> {
-    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    let member = fetch_guild_member(state.clone(), &group_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    inf.ps_interface
+    state
+        .ps_interface
         .select::<Uuid, Channel>(Some((&["id"], &[channel_id])), None)
         .await
         .map_err(|e| GenericErr::Internal(e))?
@@ -237,7 +241,8 @@ pub async fn delete_channel(
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    inf.ps_interface
+    state
+        .ps_interface
         .delete::<Uuid, Channel>(&[channel_id])
         .await
         .map_err(|e| GenericErr::Internal(e))?;

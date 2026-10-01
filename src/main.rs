@@ -134,8 +134,8 @@ async fn main() {
         .route("/{dm_id}/member/{member_id}/message", post(add_dm_message))
         .route("/{dm_id}/message/{message_id}", patch(update_message))
         .route("/{dm_id}/message/{message_id}", delete(delete_message))
-        .route("/{dm_id}/message/inital", get(get_inital_messages))
-        .route("/{dm_id}/message/{cursor}", get(get_messages_from));
+        .route("/{dm_id}/message/inital", get(get_messages))
+        .route("/{dm_id}/message/{cursor}", get(get_messages));
 
     let channel: Router<AppState> = Router::new()
         .route("/inital", get(get_inital_channels))
@@ -143,8 +143,8 @@ async fn main() {
         .route("/{channel_id}/message", post(add_guild_message))
         .route("/{channel_id}/message/{message_id}", patch(update_message))
         .route("/{channel_id}/message/{message_id}", delete(delete_message))
-        .route("/{channel_id}/message/inital", get(get_inital_messages))
-        .route("/{channel_id}/message/{cursor}", get(get_messages_from))
+        .route("/{channel_id}/message/inital", get(get_messages))
+        .route("/{channel_id}/message/{cursor}", get(get_messages))
         .route("/", post(add_guild_channel))
         .route("/{channel_id}", patch(update_channel))
         .route("/{channel_id}", delete(delete_channel));
