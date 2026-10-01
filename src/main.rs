@@ -40,10 +40,13 @@ async fn ensure_master_user(state: AppState) {
     );
 
     let user_s = inf
-        .select::<String, User>(Some((
-            &["username", "password"],
-            &vec![usr_nm.clone(), pswrd.clone()],
-        )))
+        .select::<String, User>(
+            Some((
+                &["username", "password"],
+                &vec![usr_nm.clone(), pswrd.clone()],
+            )),
+            None,
+        )
         .await
         .expect("master user querying is expected to succeed");
 
@@ -127,18 +130,19 @@ async fn main() {
         .route("/invite/inital", get(get_inital_dm_invites))
         .route("/invite/{cursor}", get(get_dm_invites_from))
         .route("/invite/{invite_id}", patch(manage_dm_invite))
-        .route("/{group_id}", delete(delete_dm))
-        .route(
-            "/{group_id}/member/{member_id}/message",
-            post(add_dm_message),
-        )
-        .route("/{group_id}/message/inital", get(get_inital_messages))
-        .route("/{group_id}/message/{cursor}", get(get_messages_from));
+        .route("/{dm_id}", delete(delete_dm))
+        .route("/{dm_id}/member/{member_id}/message", post(add_dm_message))
+        .route("/{dm_id}/message/{message_id}", patch(update_message))
+        .route("/{dm_id}/message/{message_id}", delete(delete_message))
+        .route("/{dm_id}/message/inital", get(get_inital_messages))
+        .route("/{dm_id}/message/{cursor}", get(get_messages_from));
 
     let channel: Router<AppState> = Router::new()
         .route("/inital", get(get_inital_channels))
         .route("/{cursor}", get(get_channels_from))
         .route("/{channel_id}/message", post(add_guild_message))
+        .route("/{channel_id}/message/{message_id}", patch(update_message))
+        .route("/{channel_id}/message/{message_id}", delete(delete_message))
         .route("/{channel_id}/message/inital", get(get_inital_messages))
         .route("/{channel_id}/message/{cursor}", get(get_messages_from))
         .route("/", post(add_guild_channel))
@@ -151,24 +155,17 @@ async fn main() {
         .route("/{cursor}", get(get_guilds_from))
         .route("/invite/inital", get(get_inital_guild_invites))
         .route("/invite/{cursor}", get(get_guild_invites_from))
-        .route("/{group_id}/member/inital", get(get_inital_guild_members))
-        .route("/{group_id}/member/{cursor}", get(get_guild_members_from))
+        .route("/{guild_id}/member/inital", get(get_inital_guild_members))
+        .route("/{guild_id}/member/{cursor}", get(get_guild_members_from))
         .route("/invite/{invite_id}", patch(manage_guild_invite))
-        .route("/{group_id}/invite", post(invite_guild_member))
-        .route("/{group_id}", delete(delete_guild))
-        .route("/{group_id}", patch(update_guild))
+        .route("/{guild_id}/invite", post(invite_guild_member))
+        .route("/{guild_id}", delete(delete_guild))
+        .route("/{guild_id}", patch(update_guild))
         .route(
-            "/{group_id}/member/{member_id}",
+            "/{guild_id}/member/{member_id}",
             delete(delete_guild_member),
         )
-        .nest("{group_id}/channel", channel);
-
-    let groups: Router<AppState> = Router::new()
-        .nest("/dm", dm)
-        .nest("/guild", guild)
-        /* ===== Groups ===== */
-        .route("/{group_id}/message/{message_id}", patch(update_message))
-        .route("/{group_id}/message/{message_id}", delete(delete_message));
+        .nest("{guild_id}/channel", channel);
 
     let relations: Router<AppState> = Router::new()
         .route("/friend/inital", get(get_inital_friends))
@@ -197,8 +194,10 @@ async fn main() {
         .route("/invite/new_user", post(create_invite))
         /* ===== Auth ===== */
         .nest("/auth", auth)
-        /* ===== Groups ===== */
-        .nest("/group", groups)
+        /* ===== Dms ===== */
+        .nest("/dm", dm)
+        /* ===== Guilds ===== */
+        .nest("/guild", guild)
         /* ===== Relations ===== */
         .nest("/relation", relations)
         /* ===== Users ===== */

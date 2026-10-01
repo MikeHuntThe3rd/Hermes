@@ -188,7 +188,7 @@ pub struct Dm_Message {
 #[ids = "id"]
 pub struct Guild_Message {
     pub id: i64,
-    pub channel_id: Option<Uuid>,
+    pub channel_id: Uuid,
     pub message: Option<String>,
     pub user_id: Option<Uuid>,
 }

@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::{creation::create_priv_jwt, extractor::AuthUser},
-    handlers::{Msg, fetch_group_member},
+    handlers::{Msg, fetch_guild_member},
     responses::error_t::{AuthError, GenericErr, InternalError},
     types::*,
 };
@@ -52,40 +52,29 @@ pub struct Chnl {
 
 pub async fn add_guild(
     auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     Json(data): Json<Grp>,
 ) -> Result<Res<()>, InternalError> {
-    let group = inf
+    let guild = state
         .ps_interface
-        .insert::<Group>(
-            &[Group {
+        .insert(
+            &[Guild {
                 id: PLACE_HOLDER_UUID,
-                is_dm: false,
+                name: data.name,
+                gp: data.gp,
             }],
             false,
         )
         .await?
         .into_iter()
         .next()
-        .expect("the insert function errors if nothing is inserted");
+        .expect("at this point the vector must have at least 1 element");
 
-    let meta = inf
-        .ps_interface
-        .insert(
-            &[Guild {
-                group_id: group.id,
-                name: data.name,
-                gp: data.gp,
-            }],
-            true,
-        )
-        .await;
-
-    let member = inf
+    let member = state
         .ps_interface
         .insert::<Guild_Member>(
             &[Guild_Member {
-                group_id: group.id,
+                guild_id: guild.id,
                 member_id: auth.user_id,
                 rank: RankT::Owner,
             }],
@@ -93,12 +82,12 @@ pub async fn add_guild(
         )
         .await;
 
-    let channel = inf
+    let channel = state
         .ps_interface
         .insert(
             &[Channel {
                 id: PLACE_HOLDER_UUID,
-                group_id: group.id,
+                guild_id: guild.id,
                 name: "main".to_string(),
                 category: ChannelT::Text,
             }],
@@ -106,8 +95,11 @@ pub async fn add_guild(
         )
         .await;
 
-    if member.is_err() || meta.is_err() || channel.is_err() {
-        inf.ps_interface.delete::<Uuid, Group>(&[group.id]).await?;
+    if member.is_err() || channel.is_err() {
+        state
+            .ps_interface
+            .delete::<Uuid, Guild>(&[guild.id])
+            .await?;
         return Err(InternalError::DbError);
     }
 
@@ -121,56 +113,43 @@ pub async fn add_guild(
 
 pub async fn add_dm(
     auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     Path(member_id): Path<Uuid>,
 ) -> Result<Res<()>, InternalError> {
-    inf.ps_interface
-        .select::<Uuid, User>(Some((&["id"], &[member_id])), None)
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
-
-    let group = inf
+    state
         .ps_interface
-        .insert::<Group>(
-            &[Group {
-                id: PLACE_HOLDER_UUID,
-                is_dm: true,
-            }],
-            false,
-        )
-        .await?
-        .into_iter()
-        .next()
-        .expect("the insert function errors if nothing is inserted");
+        .select::<Uuid, User>(Some((&["id"], &[member_id])), None)
+        .await?;
 
-    let dm = inf
+    let dm = state
         .ps_interface
         .insert::<Dm>(
             &[Dm {
-                group_id: PLACE_HOLDER_UUID,
+                id: PLACE_HOLDER_UUID,
                 user_a: Some(auth.user_id),
                 user_b: None,
             }],
             false,
         )
-        .await;
+        .await?
+        .into_iter()
+        .next()
+        .expect("at this point the vector must have at least 1 element");
 
-    let invite = inf
+    let invite = state
         .ps_interface
         .insert(
             &[Dm_Invite {
                 id: PLACE_HOLDER_UUID,
-                group_id: group.id,
+                dm_id: dm.id,
                 user_id: member_id,
             }],
             false,
         )
         .await;
 
-    if dm.is_err() || invite.is_err() {
-        inf.ps_interface.delete::<Uuid, Group>(&[group.id]).await?;
+    if invite.is_err() {
+        state.ps_interface.delete::<Uuid, Dm>(&[dm.id]).await?;
         return Err(InternalError::DbError);
     }
 
@@ -184,81 +163,29 @@ pub async fn add_dm(
 
 pub async fn add_dm_message(
     auth: AuthUser,
-    State(inf): State<AppState>,
-    Path(group_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Path(dm_id): Path<Uuid>,
     Json(data): Json<Msg>,
-) -> Result<Res<()>, InternalError> {
-    return Ok(add_message(inf, auth.user_id, group_id, None, data).await?);
-}
-
-pub async fn add_guild_message(
-    auth: AuthUser,
-    State(inf): State<AppState>,
-    Path((group_id, channel_id)): Path<(Uuid, Uuid)>,
-    Json(data): Json<Msg>,
-) -> Result<Res<()>, InternalError> {
-    inf.ps_interface
-        .select::<Uuid, Channel>(Some((&["id"], &[channel_id])), None)
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
-
-    return Ok(add_message(inf, auth.user_id, group_id, Some(channel_id), data).await?);
-}
-
-async fn add_message(
-    inf: AppState,
-    user_id: Uuid,
-    group_id: Uuid,
-    channel_id: Option<Uuid>,
-    data: Msg,
 ) -> Result<Res<()>, InternalError> {
     if data.file_ids.is_empty() && data.message.is_none() {
         return Err(InternalError::EmptyMessage);
     }
-
-    let group: Group = inf
+    let dm: Dm = state
         .ps_interface
-        .select(Some((&["id"], &[group_id])), None)
+        .select(Some((&["id"], &[dm_id])), None)
         .await?
         .into_iter()
         .next()
         .ok_or(InternalError::NoMatches)?;
 
-    if group.is_dm {
-        let dm: Dm = inf
-            .ps_interface
-            .select(Some((&["group_id"], &[group_id])), None)
-            .await?
-            .into_iter()
-            .next()
-            .ok_or(InternalError::NoMatches)?;
-
-        if dm.user_a != Some(user_id) && dm.user_b != Some(user_id) {
-            return Err(InternalError::NoMatches);
-        }
-    } else {
-        inf.ps_interface
-            .select::<Uuid, Guild_Member>(
-                Some((&["group_id", "member_id"], &[group_id, user_id])),
-                None,
-            )
-            .await?
-            .into_iter()
-            .next()
-            .ok_or(InternalError::NoMatches)?;
-    }
-
-    let msg: Message = inf
+    let msg: Dm_Message = state
         .ps_interface
         .insert(
-            &[Message {
+            &[Dm_Message {
                 id: 0,
+                dm_id: dm.id,
                 message: data.message,
-                group_id: group_id,
-                channel_id: channel_id,
-                user_id: Some(user_id),
+                user_id: Some(auth.user_id),
             }],
             false,
         )
@@ -267,20 +194,85 @@ async fn add_message(
         .next()
         .ok_or(InternalError::NoMatches)?;
 
-    let msg_objs: Vec<Message_Object> = data
+    let msg_objs: Vec<Dm_Message_Object> = data
         .file_ids
         .into_iter()
-        .map(|file_id| Message_Object {
+        .map(|file_id| Dm_Message_Object {
             message_id: msg.id,
             object_id: file_id,
         })
         .collect();
 
-    let msg_objs_insert = inf.ps_interface.insert(&msg_objs, true).await;
+    let msg_objs_insert = state.ps_interface.insert(&msg_objs, true).await;
 
     if msg_objs_insert.is_err() {
-        inf.ps_interface
-            .delete::<i32, Message_Object>(&[msg.id])
+        state
+            .ps_interface
+            .delete::<i64, Dm_Message>(&[msg.id])
+            .await?;
+
+        return Err(InternalError::DbError);
+    }
+
+    return Ok(Res {
+        status: StatusCode::CREATED,
+        success: true,
+        msg: String::new(),
+        data: None,
+    });
+}
+
+pub async fn add_guild_message(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path((guild_id, channel_id)): Path<(Uuid, Uuid)>,
+    Json(data): Json<Msg>,
+) -> Result<Res<()>, InternalError> {
+    if data.file_ids.is_empty() && data.message.is_none() {
+        return Err(InternalError::EmptyMessage);
+    }
+
+    fetch_guild_member(state.clone(), &guild_id, &auth.user_id).await?;
+
+    state
+        .ps_interface
+        .select::<Uuid, Channel>(Some((&["id"], &[channel_id])), Some(1))
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(InternalError::NoMatches)?;
+
+    let msg = state
+        .ps_interface
+        .insert(
+            &[Guild_Message {
+                id: 0,
+                message: data.message,
+                channel_id: channel_id,
+                user_id: Some(auth.user_id),
+            }],
+            false,
+        )
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(InternalError::NoMatches)?;
+
+    let msg_objs: Vec<Guild_Message_Object> = data
+        .file_ids
+        .into_iter()
+        .map(|file_id| Guild_Message_Object {
+            message_id: msg.id,
+            object_id: file_id,
+        })
+        .collect();
+
+    let msg_objs_insert = state.ps_interface.insert(&msg_objs, true).await;
+
+    if msg_objs_insert.is_err() {
+        state
+            .ps_interface
+            .delete::<i64, Guild_Message>(&[msg.id])
             .await?;
 
         return Err(InternalError::DbError);
@@ -296,75 +288,76 @@ async fn add_message(
 
 pub async fn invite_guild_member(
     auth: AuthUser,
-    State(inf): State<AppState>,
-    Path(group_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Path(guild_id): Path<Uuid>,
     Json(data): Json<GrpInv>,
 ) -> Result<Res<()>, GenericErr> {
     if auth.user_id == data.user_id {
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let invs: Vec<Guild_Invite> = inf
+    let invs: Vec<Guild_Invite> = state
         .ps_interface
         .select(
-            Some((&["group_id", "user_id"], &[group_id, data.user_id])),
+            Some((&["guild_id", "user_id"], &[guild_id, data.user_id])),
             None,
         )
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
     if invs.first().is_some() {
         return Err(GenericErr::Internal(InternalError::DuplicateData));
     }
 
-    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    let member = fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    let usr: Vec<User> = inf
+    let usr: Vec<User> = state
         .ps_interface
         .select(Some((&["id"], &[data.user_id])), None)
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
     if member.rank < data.rank {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    if usr.first().is_none() {
+    if usr.is_empty() {
         return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 
     let inv = Guild_Invite {
         id: PLACE_HOLDER_UUID,
-        group_id: group_id,
+        guild_id: guild_id,
         user_id: data.user_id,
         rank: data.rank,
     };
 
-    inf.ps_interface
+    state
+        .ps_interface
         .insert(&[inv], true)
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
     return Ok(Res {
         status: StatusCode::CREATED,
         success: true,
-        msg: "invite created successfully".to_string(),
+        msg: String::new(),
         data: None,
     });
 }
 
 pub async fn create_friend_invite(
     auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
     if auth.user_id == user_id {
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let user: Vec<User> = inf
+    let user: Vec<User> = state
         .ps_interface
         .select(Some((&["id"], &[user_id])), None)
         .await
@@ -374,7 +367,7 @@ pub async fn create_friend_invite(
         return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 
-    let invs: Vec<Relation> = inf
+    let invs: Vec<Relation> = state
         .ps_interface
         .select(
             Some((&["relating_user", "related_user"], &[auth.user_id, user_id])),
@@ -394,7 +387,8 @@ pub async fn create_friend_invite(
         }
     }
 
-    inf.ps_interface
+    state
+        .ps_interface
         .insert::<Relation>(
             &[Relation {
                 relating_user: auth.user_id,
@@ -416,10 +410,10 @@ pub async fn create_friend_invite(
 
 pub async fn create_invite(
     auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     Json(data): Json<PrivLevel>,
 ) -> Result<Res<InvJwt>, GenericErr> {
-    let user: Vec<User> = inf
+    let user: Vec<User> = state
         .ps_interface
         .select(Some((&["id"], &vec![auth.user_id])), None)
         .await
@@ -433,7 +427,7 @@ pub async fn create_invite(
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    let jwt_str = create_priv_jwt(data.prv_level, &inf.jwt_secret)
+    let jwt_str = create_priv_jwt(data.prv_level, &state.jwt_secret)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
@@ -449,11 +443,11 @@ pub async fn create_invite(
 
 pub async fn add_guild_channel(
     auth: AuthUser,
-    State(inf): State<AppState>,
-    Path(group_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Path(guild_id): Path<Uuid>,
     Json(data): Json<Chnl>,
 ) -> Result<Res<()>, GenericErr> {
-    let member = fetch_group_member(inf.clone(), &group_id, &auth.user_id)
+    let member = fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
@@ -461,11 +455,12 @@ pub async fn add_guild_channel(
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    inf.ps_interface
+    state
+        .ps_interface
         .insert(
             &[Channel {
                 id: PLACE_HOLDER_UUID,
-                group_id: group_id,
+                guild_id: guild_id,
                 name: data.name,
                 category: data.category,
             }],
@@ -484,7 +479,7 @@ pub async fn add_guild_channel(
 
 pub async fn upload(
     _auth: AuthUser,
-    State(inf): State<AppState>,
+    State(state): State<AppState>,
     mut data: Multipart,
 ) -> Result<Res<ObjectIds>, InternalError> {
     let match_err = |status: StatusCode, rm: Option<String>| -> InternalError {
@@ -542,14 +537,14 @@ pub async fn upload(
 
         let hash = hex::encode(hasher.finalize());
 
-        let matches: Vec<Object> = inf
+        let matches: Vec<Object> = state
             .ps_interface
             .select::<&str, Object>(Some((&["hash"], &[&hash])), None)
             .await
             .map_err(|_| cleanup_err(temp_path.clone(), InternalError::DbError))?;
 
         /* ===== CONSUME TEMP FILE ===== */
-        let mime = if let Some(typ) = infer::get(
+        let mime = if let Some(typ) = state::get(
             &tokio::fs::read(&temp_path)
                 .await
                 .map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?,
@@ -593,7 +588,7 @@ pub async fn upload(
             creation_timestamp: OffsetDateTime::now_utc().unix_timestamp() as i64,
         };
 
-        let obj = inf
+        let obj = state
             .ps_interface
             .insert::<Object>(&[new_obj], false)
             .await

@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     responses::error_t::InternalError,
-    types::{Group, Guild_Member, RankT},
+    types::{Guild_Member, RankT},
 };
 
 #[derive(Serialize, Deserialize, FromRow)]
@@ -42,28 +42,18 @@ pub struct Msg {
     pub message: Option<String>,
 }
 
-pub async fn fetch_group(inf: AppState, group_id: &Uuid) -> Result<Group, InternalError> {
-    let groups: Vec<Group> = inf
-        .ps_interface
-        .select(Some((&["id"], &[group_id])))
-        .await
-        .map_err(|_| InternalError::DbError)?;
-
-    let first = groups.into_iter().next().ok_or(InternalError::NoMatches)?;
-
-    return Ok(first);
-}
-
-pub async fn fetch_group_member(
-    inf: AppState,
-    group_id: &Uuid,
+pub async fn fetch_guild_member(
+    state: AppState,
+    guild_id: &Uuid,
     member_id: &Uuid,
 ) -> Result<Guild_Member, InternalError> {
-    let groups: Vec<Guild_Member> = inf
+    let groups: Vec<Guild_Member> = state
         .ps_interface
-        .select(Some((&["group_id", "member_id"], &[group_id, member_id])))
-        .await
-        .map_err(|_| InternalError::DbError)?;
+        .select(
+            Some((&["guild_id", "member_id"], &[guild_id, member_id])),
+            None,
+        )
+        .await?;
 
     let first = groups.into_iter().next().ok_or(InternalError::NoMatches)?;
 
