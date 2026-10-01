@@ -4,6 +4,7 @@ use axum::{
     http::StatusCode,
 };
 
+use axum_extra::headers::Mime;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -544,7 +545,7 @@ pub async fn upload(
             .map_err(|_| cleanup_err(temp_path.clone(), InternalError::DbError))?;
 
         /* ===== CONSUME TEMP FILE ===== */
-        let mime = if let Some(typ) = state::get(
+        let mime = if let Some(typ) = infer::get(
             &tokio::fs::read(&temp_path)
                 .await
                 .map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?,
