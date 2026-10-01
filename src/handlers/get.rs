@@ -218,27 +218,36 @@ async fn get_friends(
     state: AppState,
 ) -> Result<Res<RelationsResponse>, InternalError> {
     let friends: Vec<StrippedUser> = if let Some(pin) = cursor {
-        let sql: &'static str = "SELECT AS user_id, AS nickname, AS pfp FROM users 
-        JOIN relations ON relations.related_user = users.id 
-        WHERE (relations.relating_user, relations.state) = ($1, $2) AND $3 > users.id
-        ORDER BY users.id DESC
-        LIMIT 50;";
-
-        let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> = sqlx::query_as(sql)
-            .bind(user_id)
-            .bind(RelationT::Friends)
-            .bind(pin);
+        let query = sqlx::query_as!(
+            StrippedUser,
+            "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp FROM users 
+            JOIN relations ON relations.related_user = users.id 
+            WHERE (relations.relating_user, relations.state) = ($1, $2::relation_t) AND $3 > users.id
+            ORDER BY users.id DESC
+            LIMIT 50;",
+            user_id,
+            RelationT::Friends as RelationT,
+            pin
+        );
 
         state.ps_interface.generic_fetch(query).await?
     } else {
         let sql: &'static str = "SELECT AS user_id, AS nickname, AS pfp FROM users 
         JOIN relations ON relations.related_user = users.id 
-        WHERE (relations.relating_user, relations.state) = ($1, $2)
+        WHERE (relations.relating_user, relations.state) = ($1, $2::relation_t)
         ORDER BY users.id DESC
         LIMIT 50;";
 
-        let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> =
-            sqlx::query_as(sql).bind(user_id).bind(RelationT::Friends);
+        let query = sqlx::query_as!(
+            StrippedUser,
+            "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp FROM users 
+        JOIN relations ON relations.related_user = users.id 
+        WHERE (relations.relating_user, relations.state) = ($1, $2::relation_t)
+        ORDER BY users.id DESC
+        LIMIT 50;",
+            user_id,
+            RelationT::Friends as RelationT
+        );
 
         state.ps_interface.generic_fetch(query).await?
     };

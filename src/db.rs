@@ -1,6 +1,6 @@
 use crate::{logging::Logs, responses::error_t::InternalError, types::*};
 use sqlx::{
-    Encode, FromRow, Pool, Postgres, QueryBuilder, Sqlite,
+    Encode, FromRow, IntoArguments, Pool, Postgres, QueryBuilder, Sqlite,
     postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow},
     query::{Query, QueryAs},
     sqlite::{self, SqliteConnectOptions},
@@ -239,18 +239,19 @@ impl PsInterface {
         Ok(())
     }
 
-    pub async fn generic_fetch<T>(
+    pub async fn generic_fetch<F, O, A>(
         &self,
-        query: QueryAs<'_, Postgres, T, PgArguments>,
-    ) -> Result<Vec<T>, InternalError>
+        query: sqlx::query::Map<'_, Postgres, F, A>,
+    ) -> Result<Vec<O>, InternalError>
     where
-        T: for<'r> FromRow<'r, PgRow> + Send + Unpin,
+        F: FnMut(PgRow) -> Result<O, sqlx::Error> + Send,
+        O: Send + Unpin,
+        A: Send + IntoArguments<Postgres>,
     {
-        let res = query
+        query
             .fetch_all(&self.pool)
             .await
-            .map_err(|_| InternalError::DbError)?;
-        Ok(res)
+            .map_err(|_| InternalError::DbError)
     }
 }
 
