@@ -222,7 +222,7 @@ async fn get_friends(
             StrippedUser,
             "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp FROM users 
             JOIN relations ON relations.related_user = users.id 
-            WHERE (relations.relating_user, relations.state) = ($1, $2::relation_t) AND $3 > users.id
+            WHERE (relations.relating_user, relations.state) = ($1, $2) AND $3 > users.id
             ORDER BY users.id DESC
             LIMIT 50;",
             user_id,
@@ -232,19 +232,13 @@ async fn get_friends(
 
         state.ps_interface.generic_fetch(query).await?
     } else {
-        let sql: &'static str = "SELECT AS user_id, AS nickname, AS pfp FROM users 
-        JOIN relations ON relations.related_user = users.id 
-        WHERE (relations.relating_user, relations.state) = ($1, $2::relation_t)
-        ORDER BY users.id DESC
-        LIMIT 50;";
-
         let query = sqlx::query_as!(
             StrippedUser,
             "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp FROM users 
-        JOIN relations ON relations.related_user = users.id 
-        WHERE (relations.relating_user, relations.state) = ($1, $2::relation_t)
-        ORDER BY users.id DESC
-        LIMIT 50;",
+            JOIN relations ON relations.related_user = users.id 
+            WHERE (relations.relating_user, relations.state) = ($1, $2)
+            ORDER BY users.id DESC
+            LIMIT 50;",
             user_id,
             RelationT::Friends as RelationT
         );
@@ -280,36 +274,43 @@ async fn get_guilds(
     cursor: Option<Uuid>,
     state: AppState,
 ) -> Result<Res<GuildsResponse>, InternalError> {
-    let query: QueryAs<'_, Postgres, Guild, PgArguments> = if let Some(pin) = cursor {
-        let sql: &'static str = "SELECT guilds.*
-        FROM guilds
-        WHERE EXISTS (
-            SELECT 1
-            FROM group_members
-            WHERE group_members.group_id = guilds.group_id
-              AND group_members.member_id = $1
-          )
-          AND $2 > guilds.id
-        ORDER BY guilds.id DESC
-        LIMIT 50;";
+    let guilds: Vec<Guild> = if let Some(pin) = cursor {
+        let query = sqlx::query_as!(
+            Guild,
+            "SELECT guilds.*
+            FROM guilds
+            WHERE EXISTS (
+                SELECT 1
+                FROM guild_members
+                WHERE guild_members.guild_id = guilds.id
+                  AND guild_members.member_id = $1
+              )
+              AND $2 > guilds.id
+            ORDER BY guilds.id DESC
+            LIMIT 50;",
+            user_id,
+            pin
+        );
 
-        sqlx::query_as(sql).bind(user_id).bind(pin)
+        state.ps_interface.generic_fetch(query).await?
     } else {
-        let sql: &'static str = "SELECT guilds.*
-        FROM guilds
-        WHERE EXISTS (
-            SELECT 1
-            FROM group_members
-            WHERE group_members.group_id = guilds.group_id
-              AND group_members.member_id = $1
-          )
-        ORDER BY guilds.id DESC
-        LIMIT 50;";
+        let query = sqlx::query_as!(
+            Guild,
+            "SELECT guilds.*
+            FROM guilds
+            WHERE EXISTS (
+                SELECT 1
+                FROM guild_members
+                WHERE guild_members.guild_id = guilds.id
+                  AND guild_members.member_id = $1
+              )
+            ORDER BY guilds.id DESC
+            LIMIT 50;",
+            user_id
+        );
 
-        sqlx::query_as(sql).bind(user_id)
+        state.ps_interface.generic_fetch(query).await?
     };
-
-    let guilds = state.ps_interface.generic_fetch(query).await?;
 
     if guilds.is_empty() {
         return Err(InternalError::NoMatches);
@@ -335,37 +336,29 @@ async fn get_guilds(
 }
 
 async fn get_channels(
-    group_id: Uuid,
+    guild_id: Uuid,
     cursor: Option<Uuid>,
     state: AppState,
 ) -> Result<Res<ChannelsResponse>, InternalError> {
     let channels: Vec<StrippedChannel> = if let Some(pin) = cursor {
-        let sql: &'static str =
-            "SELECT * FROM channels WHERE $1 > channels.id ORDER BY channels.id DESC LIMIT 50;";
-        let query: QueryAs<'_, Postgres, Channel, PgArguments> = sqlx::query_as(sql).bind(pin);
-        state
-            .ps_interface
-            .generic_fetch(query)
-            .await?
-            .into_iter()
-            .map(|chnl| StrippedChannel {
-                id: chnl.id,
-                name: chnl.name,
-                category: chnl.category,
-            })
-            .collect()
+        let query = sqlx::query_as!(
+            StrippedChannel,
+            r#"SELECT channels.id AS id, channels.name AS name, channels.category AS "category: ChannelT"
+            FROM channels WHERE channels.guild_id = $1 AND $2 > channels.id  ORDER BY channels.id DESC LIMIT 50;"#,
+            guild_id,
+            pin
+        );
+
+        state.ps_interface.generic_fetch(query).await?
     } else {
-        state
-            .ps_interface
-            .select::<Uuid, Channel>(Some((&["group_id"], &[group_id])), Some(50))
-            .await?
-            .into_iter()
-            .map(|chnl| StrippedChannel {
-                id: chnl.id,
-                name: chnl.name,
-                category: chnl.category,
-            })
-            .collect()
+        let query = sqlx::query_as!(
+            StrippedChannel,
+            r#"SELECT channels.id AS id, channels.name AS name, channels.category AS "category: ChannelT"
+            FROM channels WHERE channels.guild_id = $1 ORDER BY channels.id DESC LIMIT 50;"#,
+            guild_id
+        );
+
+        state.ps_interface.generic_fetch(query).await?
     };
 
     if channels.is_empty() {
@@ -402,24 +395,31 @@ async fn get_guild_members(
         .await?;
 
     let members: Vec<StrippedMember> = if let Some(pin) = cursor {
-        let sql: &'static str =
-            "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp, group_members.rank AS rank FROM users 
-            JOIN group_members ON group_members.member_id = users.id 
-            WHERE group_members.group_id = $1 AND $2 > users.id
-            ORDER BY users.id DESC
-            LIMIT 50;";
-        let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> =
-            sqlx::query_as(sql).bind(guild_id).bind(pin);
+        let query = sqlx::query_as!(
+            StrippedMember,
+            r#"SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp, guild_members.rank AS "rank: RankT" FROM
+            users 
+            JOIN guild_members ON guild_members.member_id = users.id 
+            WHERE guild_members.guild_id = $1 AND $2 > users.id 
+            ORDER BY guild_members.member_id DESC
+            LIMIT 50;"#,
+            guild_id,
+            pin
+        );
+
         state.ps_interface.generic_fetch(query).await?
     } else {
-        let sql: &'static str =
-            "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp, group_members.rank AS rank FROM users 
-            JOIN group_members ON group_members.member_id = users.id 
-            WHERE group_members.group_id = $1
-            ORDER BY users.id DESC
-            LIMIT 50;";
-        let query: QueryAs<'_, Postgres, StrippedMember, PgArguments> =
-            sqlx::query_as(sql).bind(guild_id);
+        let query = sqlx::query_as!(
+            StrippedMember,
+            r#"SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp, guild_members.rank AS "rank: RankT" FROM
+            users 
+            JOIN guild_members ON guild_members.member_id = users.id 
+            WHERE guild_members.guild_id = $1
+            ORDER BY guild_members.member_id DESC
+            LIMIT 50;"#,
+            guild_id
+        );
+
         state.ps_interface.generic_fetch(query).await?
     };
 
@@ -517,14 +517,28 @@ async fn get_guild_invites(
     state: AppState,
 ) -> Result<Res<GuildInvitesResponse>, InternalError> {
     let invites: Vec<Guild_Invite> = if let Some(pin) = cursor {
-        let sql: &'static str = "SELECT * FROM guild_invites WHERE $1 > guild_invites.id ORDER BY guild_invites.id DESC LIMIT 50;";
-        let query: QueryAs<'_, Postgres, Guild_Invite, PgArguments> = sqlx::query_as(sql).bind(pin);
+        let query = sqlx::query_as!(
+            Guild_Invite,
+            r#"
+            SELECT id, guild_id, recipient, rank AS "rank: RankT" FROM 
+            guild_invites WHERE guild_invites.recipient = $2 AND $1 > guild_invites.id  
+            ORDER BY guild_invites.id DESC LIMIT 50;"#,
+            user_id,
+            pin
+        );
+
         state.ps_interface.generic_fetch(query).await?
     } else {
-        state
-            .ps_interface
-            .select(Some((&["user_id"], &[user_id])), Some(50))
-            .await?
+        let query = sqlx::query_as!(
+            Guild_Invite,
+            r#"
+            SELECT id, guild_id, recipient, rank AS "rank: RankT" FROM 
+            guild_invites WHERE guild_invites.recipient = $1 
+            ORDER BY guild_invites.id DESC LIMIT 50;"#,
+            user_id
+        );
+
+        state.ps_interface.generic_fetch(query).await?
     };
 
     if invites.is_empty() {
@@ -556,14 +570,24 @@ async fn get_dm_invites(
     state: AppState,
 ) -> Result<Res<DmInvitesResponse>, InternalError> {
     let invites: Vec<Dm_Invite> = if let Some(pin) = cursor {
-        let sql: &'static str = "SELECT * FROM dm_invites WHERE $1 > dm_invites.id ORDER BY dm_invites.id DESC LIMIT 50;";
-        let query: QueryAs<'_, Postgres, Dm_Invite, PgArguments> = sqlx::query_as(sql).bind(pin);
+        let query = sqlx::query_as!(
+            Dm_Invite,
+            "SELECT * FROM
+            dm_invites WHERE dm_invites.recipient = $1 AND $2 > dm_invites.id ORDER BY dm_invites.id DESC LIMIT 50;",
+            user_id,
+            pin 
+        );
+
         state.ps_interface.generic_fetch(query).await?
     } else {
-        state
-            .ps_interface
-            .select(Some((&["user_id"], &[user_id])), None)
-            .await?
+        let query = sqlx::query_as!(
+            Dm_Invite,
+            "SELECT * FROM
+            dm_invites WHERE dm_invites.recipient = $1 ORDER BY dm_invites.id DESC LIMIT 50;",
+            user_id
+        );
+
+        state.ps_interface.generic_fetch(query).await?
     };
 
     if invites.is_empty() {
@@ -595,23 +619,24 @@ pub async fn get_friend_invites(
     state: AppState,
 ) -> Result<Res<RelationInvitesResponse>, InternalError> {
     let invites: Vec<StrippedUser> = if let Some(pin) = cursor {
-        let sql: &'static str = "SELECT users.id AS user_id, nickname, pfp FROM users 
-        JOIN relations ON relations.related_user = users.id 
-        WHERE (relations.state, users.id) = ($1, $2) AND $3 > users.id;";
-
-        let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> = sqlx::query_as(sql)
-            .bind(RelationT::Pending)
-            .bind(user_id)
-            .bind(pin);
+        let query = sqlx::query_as!(StrippedUser, 
+            r#"SELECT users.id AS user_id, nickname, pfp FROM users 
+            JOIN relations ON relations.related_user = users.id 
+            WHERE (relations.state, users.id) = ($1, $2) AND $3 > users.id;"#,
+            RelationT::Pending as RelationT,
+            user_id,
+            pin
+        );
 
         state.ps_interface.generic_fetch(query).await?
     } else {
-        let sql: &'static str = "SELECT users.id AS user_id, nickname, pfp FROM users 
-        JOIN relations ON relations.related_user = users.id 
-        WHERE (relations.state, users.id) = ($1, $2);";
-
-        let query: QueryAs<'_, Postgres, StrippedUser, PgArguments> =
-            sqlx::query_as(sql).bind(RelationT::Pending).bind(user_id);
+        let query = sqlx::query_as!(StrippedUser, 
+            r#"SELECT users.id AS user_id, nickname, pfp FROM users 
+            JOIN relations ON relations.related_user = users.id 
+            WHERE (relations.state, users.id) = ($1, $2);"#,
+            RelationT::Pending as RelationT,
+            user_id
+        );
 
         state.ps_interface.generic_fetch(query).await?
     };

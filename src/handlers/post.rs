@@ -4,7 +4,6 @@ use axum::{
     http::StatusCode,
 };
 
-use axum_extra::headers::Mime;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -143,7 +142,7 @@ pub async fn add_dm(
             &[Dm_Invite {
                 id: PLACE_HOLDER_UUID,
                 dm_id: dm.id,
-                user_id: member_id,
+                recipient: member_id,
             }],
             false,
         )
@@ -331,7 +330,7 @@ pub async fn invite_guild_member(
     let inv = Guild_Invite {
         id: PLACE_HOLDER_UUID,
         guild_id: guild_id,
-        user_id: data.user_id,
+        recipient: data.user_id,
         rank: data.rank,
     };
 

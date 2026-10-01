@@ -154,7 +154,7 @@ pub struct Dm {
 pub struct Guild_Invite {
     pub id: Uuid,
     pub guild_id: Uuid,
-    pub user_id: Uuid,
+    pub recipient: Uuid,
     pub rank: RankT,
 }
 
@@ -163,7 +163,7 @@ pub struct Guild_Invite {
 pub struct Dm_Invite {
     pub id: Uuid,
     pub dm_id: Uuid,
-    pub user_id: Uuid,
+    pub recipient: Uuid,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Bindable)]

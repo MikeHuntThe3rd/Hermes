@@ -167,7 +167,7 @@ pub async fn manage_guild_invite(
 
     let inv: Guild_Invite = invs.into_iter().next().ok_or(InternalError::NoMatches)?;
 
-    if inv.user_id != auth.user_id {
+    if inv.recipient != auth.user_id {
         return Err(InternalError::NoMatches);
     }
 
@@ -177,7 +177,7 @@ pub async fn manage_guild_invite(
             .insert::<Guild_Member>(
                 &[Guild_Member {
                     guild_id: inv.guild_id,
-                    member_id: inv.user_id,
+                    member_id: inv.recipient,
                     rank: inv.rank,
                 }],
                 true,
@@ -204,25 +204,41 @@ pub async fn manage_dm_invite(
     Path(invite_id): Path<Uuid>,
     Json(data): Json<InvMng>,
 ) -> Result<Res<()>, InternalError> {
-    let invs: Vec<Dm_Invite> = state
+    let inv: Dm_Invite = state
         .ps_interface
         .select(Some((&["id"], &[invite_id])), None)
-        .await
-        .map_err(|_| InternalError::DbError)?;
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(InternalError::NoMatches)?;
 
-    let inv: Dm_Invite = invs.into_iter().next().ok_or(InternalError::NoMatches)?;
-
-    if inv.user_id != auth.user_id {
+    if inv.recipient != auth.user_id {
         return Err(InternalError::NoMatches);
     }
+
+    let dm: Dm = state
+        .ps_interface
+        .select(Some((&["id"], &[inv.dm_id])), Some(1))
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(InternalError::NoMatches)?;
+
+    let existing_user = if let Some(user) = dm.user_a {
+        user
+    } else if let Some(user) = dm.user_b {
+        user
+    } else {
+        return Err(InternalError::NoMatches);
+    };
 
     if data.accept {
         state
             .ps_interface
-            .update::<Dm_Invite>(Dm_Invite {
-                id: inv.id,
-                dm_id: inv.dm_id,
-                user_id: auth.user_id,
+            .update(Dm {
+                id: dm.id,
+                user_a: Some(existing_user),
+                user_b: Some(inv.recipient),
             })
             .await?;
     }

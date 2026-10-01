@@ -1,8 +1,5 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use sqlx::postgres::PgArguments;
-use sqlx::query::QueryAs;
-use sqlx::{Postgres, query_as};
 use uuid::Uuid;
 
 use crate::handlers::fetch_guild_member;
@@ -13,22 +10,20 @@ pub async fn delete_self(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Res<()>, InternalError> {
-    let sql: &'static str = "SELECT * FROM groups
-    JOIN group_members gm ON gm.group_id = groups.id
-    WHERE gm.member_id = $1
-    AND gm.rank = $2
-    AND (SELECT COUNT(*) FROM group_members gm2
-        WHERE gm2.group_id = groups.id AND gm2.rank = $2
-    ) = 1;";
+    let query = sqlx::query_as!(
+        Guild,
+        "SELECT guilds.* FROM guilds
+        JOIN guild_members gm ON gm.guild_id = guilds.id
+        WHERE gm.member_id = $1
+        AND gm.rank = $2
+        AND (SELECT 1 FROM guild_members gm2
+            WHERE gm2.guild_id = guilds.id AND gm2.rank = $2
+        ) = 1;",
+        auth.user_id,
+        RankT::Owner as RankT
+    );
 
-    let query: QueryAs<'_, Postgres, Guild, PgArguments> =
-        query_as(sql).bind(auth.user_id).bind(RankT::Owner);
-
-    let orphan_guilds = state
-        .ps_interface
-        .generic_fetch(query)
-        .await
-        .map_err(|_| InternalError::DbError)?;
+    let orphan_guilds = state.ps_interface.generic_fetch(query).await?;
 
     if !orphan_guilds.is_empty() {
         return Err(InternalError::DetachingOperation);
@@ -37,8 +32,7 @@ pub async fn delete_self(
     let deletes = state
         .ps_interface
         .delete::<Uuid, User>(&vec![auth.user_id])
-        .await
-        .map_err(|_| InternalError::DbError)?;
+        .await?;
 
     if deletes.is_empty() {
         return Ok(Res {

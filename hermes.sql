@@ -45,16 +45,16 @@ CREATE TABLE "dms" (
 CREATE TABLE "guild_invites" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "guild_id" uuid NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
-  "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "recipient" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   "rank" rank_t NOT NULL,
-  UNIQUE (guild_id, user_id)
+  UNIQUE (guild_id, recipient)
 );
 
 CREATE TABLE "dm_invites" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "dm_id" uuid NOT NULL REFERENCES dms(id) ON DELETE CASCADE,
-  "user_id" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  UNIQUE (dm_id, user_id)
+  "recipient" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE (dm_id, recipient)
 );
 
 CREATE TABLE "guild_members" (
