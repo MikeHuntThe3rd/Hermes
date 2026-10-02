@@ -181,15 +181,71 @@ pub async fn delete_relation(
     });
 }
 
-//TODO: new dele ep for message del/updates
-pub async fn delete_message(
+pub async fn delete_dm_message(
     auth: AuthUser,
     State(state): State<AppState>,
-    Path((group_id, message_id)): Path<(Uuid, i64)>,
+    Path((dm_id, message_id)): Path<(Uuid, i64)>,
 ) -> Result<Res<()>, GenericErr> {
-    let member = fetch_guild_member(state.clone(), &group_id, &auth.user_id)
+    state.ps_interface.select::<Uuid, Dm>(Some((&["id"], &[dm_id])), Some(1))
+    .await.map_err(|e| GenericErr::Internal(e))?
+    .into_iter()
+    .next()
+    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    let messages_query = sqlx::query_as!(Dm_Message, 
+        "SELECT * FROM dm_messages WHERE id = $1 AND dm_id = $2 LIMIT 1",
+        message_id,
+        dm_id
+    );
+
+    let message: Dm_Message = state.ps_interface.generic_fetch(messages_query)
+    .await.map_err(|e| GenericErr::Internal(e))?
+    .into_iter()
+    .next()
+    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    if message.user_id != Some(auth.user_id) {
+        return Err(GenericErr::Auth(AuthError::NonOwner));
+    }
+
+    let deletes = state
+        .ps_interface
+        .delete::<i64, Dm_Message>(&vec![message_id])
+        .await
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    if !deletes.is_empty() {
+        return Ok(Res {
+            status: StatusCode::OK,
+            success: true,
+            msg: String::new(),
+            data: None,
+        });
+    } else {
+        return Err(GenericErr::Internal(InternalError::NoMatches));
+    }
+}
+
+pub async fn delete_guild_channel_message(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path((guild_id,channel_id, message_id)): Path<(Uuid, Uuid, i64)>,
+) -> Result<Res<()>, GenericErr> {
+    let member = fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
+
+     let messages_query = sqlx::query_as!(Guild_Message, 
+        "SELECT * FROM guild_messages WHERE id = $1 AND channel_id = $2 LIMIT 1",
+        message_id,
+        channel_id
+    );
+
+    state.ps_interface.generic_fetch(messages_query)
+    .await.map_err(|e| GenericErr::Internal(e))?
+    .into_iter()
+    .next()
+    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
     if member.rank == RankT::User {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));

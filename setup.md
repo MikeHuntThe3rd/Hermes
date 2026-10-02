@@ -64,7 +64,7 @@ docker run --name sqlx-dev `
 docker exec sqlx-dev pg_isready -U postgres
 
 # 3. Copy schema into the container and apply it
-docker cp schema.sql sqlx-dev:/schema.sql
+docker cp hermes.sql sqlx-dev:/schema.sql
 docker exec sqlx-dev psql -U postgres -d mydb -f /schema.sql
 
 # 4. Point sqlx at the DB

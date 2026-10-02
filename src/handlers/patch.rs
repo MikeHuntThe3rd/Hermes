@@ -1,9 +1,6 @@
 use axum::extract::{Path, State};
 use axum::{Json, http::StatusCode};
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::PgArguments;
-use sqlx::query::Query;
-use sqlx::{Postgres, query};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -312,27 +309,128 @@ pub async fn manage_friend_invite(
     });
 }
 
-//TODO: make another one of this for guilds
-pub async fn update_message(
+pub async fn update_guild_channel_message(
     auth: AuthUser,
     State(state): State<AppState>,
-    Path((group_id, message_id)): Path<(Uuid, i64)>,
+    Path((guild_id, channel_id, message_id)): Path<(Uuid, Uuid, i64)>,
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, GenericErr> {
-    fetch_guild_member(state.clone(), &group_id, &auth.user_id)
+    fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    let msg: Dm_Message = state
+    let messages_query = sqlx::query_as!(Guild_Message, 
+        "SELECT * FROM guild_messages WHERE guild_messages.id = $1 AND guild_messages.channel_id = $2 LIMIT 1",
+        message_id,
+        channel_id
+    );
+
+    let messages: Guild_Message = state
         .ps_interface
-        .select(Some((&["id"], &[message_id])), None)
+        .generic_fetch(messages_query)
         .await
         .map_err(|e| GenericErr::Internal(e))?
         .into_iter()
         .next()
         .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
-    match msg.user_id {
+    match messages.user_id {
+        Some(msg_id) => {
+            if msg_id != auth.user_id {
+                return Err(GenericErr::Auth(AuthError::NonOwner));
+            }
+        }
+        None => {
+            return Err(GenericErr::Internal(InternalError::DetachedOwner));
+        }
+    }
+
+    state
+        .ps_interface
+        .update::<Guild_Message>(Guild_Message {
+            id: messages.id,
+            channel_id: messages.channel_id,
+            message: data.message,
+            user_id: messages.user_id,
+        })
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
+
+    let old_objs_hash: HashSet<Uuid> = state
+        .ps_interface
+        .select(Some((&["message_id"], &[messages.id])), None)
+        .await
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?
+        .into_iter()
+        .map(|m: Guild_Message_Object| m.object_id)
+        .collect();
+
+    let new_objs_hash: HashSet<Uuid> = data.file_ids.into_iter().collect();
+
+    let insert_objs: Vec<Guild_Message_Object> = new_objs_hash
+        .difference(&old_objs_hash)
+        .map(|obj_id| Guild_Message_Object {
+            message_id: messages.id,
+            object_id: *obj_id,
+        })
+        .collect();
+
+    let delete_objs: Vec<Uuid> = old_objs_hash.difference(&new_objs_hash).copied().collect();
+
+    state
+        .ps_interface
+        .insert(&insert_objs, true)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
+
+    let delete_query = sqlx::query!( 
+        r#"DELETE FROM guild_message_objects WHERE message_id = $1 AND object_id = ANY($2);"#,
+        message_id,
+        delete_objs.as_slice()
+    );
+
+    state
+        .ps_interface
+        .generic_exec(delete_query)
+        .await
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    return Ok(Res {
+        status: StatusCode::OK,
+        success: true,
+        msg: String::new(),
+        data: None,
+    });
+}
+
+pub async fn update_dm_message(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path((dm_id, message_id)): Path<(Uuid, i64)>,
+    Json(data): Json<Msg>,
+) -> Result<Res<()>, GenericErr> {
+    state.ps_interface.select::<Uuid, Dm>(Some((&["id"], &[dm_id])), Some(1))
+    .await.map_err(|e| GenericErr::Internal(e))?
+    .into_iter()
+    .next()
+    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    let messages_query = sqlx::query_as!(Dm_Message, 
+        "SELECT * FROM dm_messages WHERE id = $1 AND dm_id = $2 LIMIT 1",
+        message_id,
+        dm_id
+    );
+
+    let messages: Dm_Message = state
+        .ps_interface
+        .generic_fetch(messages_query)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?
+        .into_iter()
+        .next()
+        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+
+    match messages.user_id {
         Some(msg_id) => {
             if msg_id != auth.user_id {
                 return Err(GenericErr::Auth(AuthError::NonOwner));
@@ -346,17 +444,17 @@ pub async fn update_message(
     state
         .ps_interface
         .update::<Dm_Message>(Dm_Message {
-            id: msg.id,
-            dm_id: msg.dm_id,
+            id: messages.id,
+            dm_id: messages.dm_id,
             message: data.message,
-            user_id: msg.user_id,
+            user_id: messages.user_id,
         })
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
     let old_objs_hash: HashSet<Uuid> = state
         .ps_interface
-        .select(Some((&["message_id"], &[msg.id])), None)
+        .select(Some((&["message_id"], &[messages.id])), None)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?
         .into_iter()
@@ -368,12 +466,12 @@ pub async fn update_message(
     let insert_objs: Vec<Dm_Message_Object> = new_objs_hash
         .difference(&old_objs_hash)
         .map(|obj_id| Dm_Message_Object {
-            message_id: msg.id,
+            message_id: messages.id,
             object_id: *obj_id,
         })
         .collect();
 
-    let delete_objs: Vec<&Uuid> = old_objs_hash.difference(&new_objs_hash).collect();
+    let delete_objs: Vec<Uuid> = old_objs_hash.difference(&new_objs_hash).copied().collect();
 
     state
         .ps_interface
@@ -381,14 +479,14 @@ pub async fn update_message(
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    let sql: &'static str =
-        "DELETE FROM message_objects WHERE message_id = $1 AND object_id = ANY($2);";
-
-    let query: Query<'_, Postgres, PgArguments> = query(sql).bind(msg.id).bind(delete_objs);
+    let delete_query = sqlx::query!("DELETE FROM dm_message_objects WHERE message_id = $1 AND object_id = ANY($2);",
+        messages.id,
+        delete_objs.as_slice()
+    );
 
     state
         .ps_interface
-        .generic_exec(query)
+        .generic_exec(delete_query)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
