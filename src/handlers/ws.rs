@@ -29,7 +29,7 @@ async fn peer_to_peer_call(socket: WebSocket, State(inf): State<AppState>, call_
     let (local_sender, mut local_receiver) = channel::<Bytes>(64);
 
     let peer_sender: mpsc::Sender<Bytes> = match inf.pending_calls.remove(&call_id) {
-        Some((room_id, senders)) => {
+        Some((_, senders)) => {
             if senders.caller.send(local_sender).is_err() {
                 ws_sender.send(Message::Close(Some(CloseFrame { code: 1011, reason: "the peer dropped the connection".into() }))).await.ok();
                 return;

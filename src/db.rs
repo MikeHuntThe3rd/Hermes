@@ -2,7 +2,7 @@ use crate::{logging::Logs, responses::error_t::InternalError, types::*};
 use sqlx::{
     Encode, FromRow, IntoArguments, Pool, Postgres, QueryBuilder, Sqlite,
     postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow},
-    query::{Query, QueryAs},
+    query::Query,
     sqlite::{self, SqliteConnectOptions},
 };
 
@@ -13,7 +13,7 @@ pub struct PsInterface {
 
 #[derive(Clone)]
 pub struct LiteInterface {
-    conn: Pool<Sqlite>,
+    _conn: Pool<Sqlite>,
 }
 
 impl PsInterface {
@@ -274,7 +274,7 @@ impl LiteInterface {
 
         sqlx::query(initalizer_sql).execute(&pool).await?;
 
-        return Ok(LiteInterface { conn: pool });
+        return Ok(LiteInterface { _conn: pool });
     }
 
     pub async fn insert<I, O>(&self, logs: Logs<I, O>) -> Result<(), sqlx::Error>
@@ -297,7 +297,7 @@ impl LiteInterface {
             sqlx::query(sql2).bind(req).bind(res)
         };
 
-        query.execute(&self.conn).await?;
+        query.execute(&self._conn).await?;
 
         return Ok(());
     }

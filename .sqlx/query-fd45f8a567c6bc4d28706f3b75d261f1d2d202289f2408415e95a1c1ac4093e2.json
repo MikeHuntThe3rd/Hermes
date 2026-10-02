@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT channels.id AS id, channels.name AS name, channels.category AS \"category: ChannelT\"\n            FROM channels WHERE channels.guild_id = $1 ORDER BY channels.id DESC LIMIT 50;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "channels",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "channels",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "category: ChannelT",
+        "type_info": {
+          "Custom": {
+            "name": "channel_t",
+            "kind": {
+              "Enum": [
+                "Text",
+                "Voice"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "channels",
+            "name": "category"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fd45f8a567c6bc4d28706f3b75d261f1d2d202289f2408415e95a1c1ac4093e2"
+}

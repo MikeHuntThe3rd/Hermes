@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp FROM users \n            JOIN relations ON relations.related_user = users.id \n            WHERE (relations.relating_user, relations.state) = ($1, $2)\n            ORDER BY users.id DESC\n            LIMIT 50;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "nickname",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "nickname"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "pfp",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "pfp"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "relation_t",
+            "kind": {
+              "Enum": [
+                "Friends",
+                "Pending",
+                "Blocked"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "db2b73bd917bc8bce7c7cf6346b9a0ca6b6a7af3033717f35f7522ec108ccf7e"
+}

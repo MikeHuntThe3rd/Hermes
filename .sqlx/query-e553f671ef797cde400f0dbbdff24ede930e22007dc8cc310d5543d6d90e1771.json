@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM guild_message_objects WHERE message_id = $1 AND object_id = ANY($2);",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e553f671ef797cde400f0dbbdff24ede930e22007dc8cc310d5543d6d90e1771"
+}

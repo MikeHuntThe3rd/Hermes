@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM dm_message_objects WHERE message_id = $1 AND object_id = ANY($2);",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a3820bca99f4d9b651b442586f5831a53b6eb039b2c812a095ab85c066ae03dd"
+}

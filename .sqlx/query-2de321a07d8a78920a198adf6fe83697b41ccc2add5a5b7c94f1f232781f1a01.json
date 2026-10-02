@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT users.id AS user_id, users.nickname AS nickname, users.pfp AS pfp, guild_members.rank AS \"rank: RankT\" FROM\n            users \n            JOIN guild_members ON guild_members.member_id = users.id \n            WHERE guild_members.guild_id = $1 AND $2 > users.id \n            ORDER BY guild_members.member_id DESC\n            LIMIT 50;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "nickname",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "nickname"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "pfp",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "pfp"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "rank: RankT",
+        "type_info": {
+          "Custom": {
+            "name": "rank_t",
+            "kind": {
+              "Enum": [
+                "User",
+                "Admin",
+                "Owner"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "guild_members",
+            "name": "rank"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "2de321a07d8a78920a198adf6fe83697b41ccc2add5a5b7c94f1f232781f1a01"
+}

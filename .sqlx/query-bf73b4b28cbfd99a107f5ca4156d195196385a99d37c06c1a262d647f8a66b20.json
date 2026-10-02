@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT guilds.* FROM guilds\n        JOIN guild_members gm ON gm.guild_id = guilds.id\n        WHERE gm.member_id = $1\n        AND gm.rank = $2\n        AND (SELECT 1 FROM guild_members gm2\n            WHERE gm2.guild_id = guilds.id AND gm2.rank = $2\n        ) = 1;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "guilds",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "guilds",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "gp",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "guilds",
+            "name": "gp"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "rank_t",
+            "kind": {
+              "Enum": [
+                "User",
+                "Admin",
+                "Owner"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "bf73b4b28cbfd99a107f5ca4156d195196385a99d37c06c1a262d647f8a66b20"
+}

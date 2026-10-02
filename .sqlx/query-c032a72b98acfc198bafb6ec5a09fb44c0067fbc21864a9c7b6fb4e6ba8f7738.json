@@ -1,0 +1,75 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, guild_id, recipient, rank AS \"rank: RankT\" FROM \n            guild_invites WHERE guild_invites.recipient = $1 \n            ORDER BY guild_invites.id DESC LIMIT 50;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "guild_invites",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "guild_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "guild_invites",
+            "name": "guild_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "recipient",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "guild_invites",
+            "name": "recipient"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "rank: RankT",
+        "type_info": {
+          "Custom": {
+            "name": "rank_t",
+            "kind": {
+              "Enum": [
+                "User",
+                "Admin",
+                "Owner"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "guild_invites",
+            "name": "rank"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c032a72b98acfc198bafb6ec5a09fb44c0067fbc21864a9c7b6fb4e6ba8f7738"
+}

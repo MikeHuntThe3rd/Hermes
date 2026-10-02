@@ -2,23 +2,10 @@ use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{Response, StatusCode};
 use axum::response::IntoResponse;
-use base64::Engine;
-use sqlx::Postgres;
-use sqlx::postgres::PgArguments;
-use sqlx::query::QueryAs;
 use uuid::Uuid;
 
 use crate::{auth::extractor::AuthUser, responses::error_t::InternalError};
 use crate::{handlers::*, types::*};
-
-#[derive(FromRow)]
-pub struct FullMsg {
-    pub id: i32,
-    pub file_ids: Vec<Uuid>,
-    pub message: Option<String>,
-    pub group_id: Uuid,
-    pub user_id: Option<Uuid>,
-}
 
 #[derive(Serialize)]
 pub struct StrippedChannel {
@@ -28,18 +15,31 @@ pub struct StrippedChannel {
 }
 
 #[derive(Serialize)]
-pub struct Page {
-    pub file_ids: Vec<Uuid>,
+pub struct GuildChannelMessage {
+    pub id: i64,
     pub message: Option<String>,
-    pub group_id: Uuid,
+    pub file_ids: Vec<Uuid>,
+    pub channel_id: Uuid,
     pub user_id: Option<Uuid>,
 }
 
-#[derive(Serialize, FromRow)]
-pub struct MsgResponse {
-    pub cursor: String,
-    pub pages: Vec<Page>,
+#[derive(Serialize)]
+pub struct DmMessage {
+    pub id: i64,
+    pub message: Option<String>,
+    pub file_ids: Vec<Uuid>,
+    pub dm_id: Uuid,
+    pub user_id: Option<Uuid>,
 }
+
+#[derive(Serialize)]
+pub struct GenericMsgResponse<T> {
+    pub cursor: Option<i64>,
+    pub pages: Vec<T>,
+}
+
+pub type GuildMsgResponse = GenericMsgResponse<GuildChannelMessage>;
+pub type DmMsgResponse = GenericMsgResponse<DmMessage>;
 
 #[derive(Serialize)]
 pub struct DmInvitesResponse {
@@ -187,6 +187,38 @@ pub async fn get_friends_from(
     State(state): State<AppState>,
 ) -> Result<Res<RelationsResponse>, InternalError> {
     return get_friends(auth.user_id, Some(cursor), state).await;
+}
+
+pub async fn get_inital_dm_messages(
+    auth: AuthUser,
+    Path(dm_id): Path<Uuid>,
+    State(state): State<AppState>,
+) -> Result<Res<DmMsgResponse>, InternalError> {
+    return get_dm_messages(auth.user_id, dm_id, None, state).await;
+}
+
+pub async fn get_dm_messages_from(
+    auth: AuthUser,
+    Path((dm_id, cursor)): Path<(Uuid, i64)>,
+    State(state): State<AppState>,
+) -> Result<Res<DmMsgResponse>, InternalError> {
+    return get_dm_messages(auth.user_id, dm_id, Some(cursor), state).await;
+}
+
+pub async fn get_inital_channel_messages(
+    auth: AuthUser,
+    Path((guild_id, channel_id)): Path<(Uuid, Uuid)>,
+    State(state): State<AppState>,
+) -> Result<Res<GuildMsgResponse>, InternalError> {
+    return get_guild_channel_messages(auth.user_id, guild_id, channel_id, None, state).await;
+}
+
+pub async fn get_channel_messages_from(
+    auth: AuthUser,
+    Path((guild_id, channel_id, cursor)): Path<(Uuid, Uuid, i64)>,
+    State(state): State<AppState>,
+) -> Result<Res<GuildMsgResponse>, InternalError> {
+    return get_guild_channel_messages(auth.user_id, guild_id, channel_id, Some(cursor), state).await;
 }
 
 pub async fn pull(
@@ -446,69 +478,148 @@ async fn get_guild_members(
     });
 }
 
-pub async fn get_messages(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path(group_id): Path<Uuid>,
-) -> Result<Res<MsgResponse>, InternalError> {
-    let sql: &'static str = "SELECT 
-        messages.id AS id, 
-        COALESCE(array_agg(message_objects.object_id) 
-        FILTER (WHERE message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS file_ids, 
-        messages.message AS message, 
-        messages.group_id AS group_id, 
-        messages.user_id AS user_id 
-    FROM messages 
-    LEFT JOIN message_objects ON message_objects.message_id = messages.id
-    WHERE messages.group_id = $1
-    GROUP BY messages.id
-    ORDER BY messages.id DESC
-    LIMIT 50;";
+async fn get_guild_channel_messages(
+    user_id: Uuid,
+    guild_id: Uuid,
+    channel_id: Uuid,
+    cursor: Option<i64>,
+    state: AppState,
+) -> Result<Res<GuildMsgResponse>, InternalError> {
+    fetch_guild_member(state.clone(), &guild_id, &user_id).await?;
 
-    fetch_guild_member(state.clone(), &group_id, &auth.user_id).await?;
+    let messages: Vec<GuildChannelMessage> = if let Some(pin) = cursor {
+        let messages_query = sqlx::query_as!(GuildChannelMessage, 
+            r#"SELECT 
+                guild_messages.id AS id, 
+                guild_messages.message AS message,
+                COALESCE(array_agg(guild_message_objects.object_id) 
+                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS "file_ids!", 
+                guild_messages.channel_id AS channel_id,
+                guild_messages.user_id AS user_id 
+            FROM guild_messages 
+            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = guild_messages.id
+            WHERE guild_messages.channel_id = $1 AND $2 > guild_messages.id
+            GROUP BY guild_messages.id
+            ORDER BY guild_messages.id ASC
+            LIMIT 50;"#,
+            channel_id,
+            pin
+        );
 
-    let query: QueryAs<'_, Postgres, FullMsg, PgArguments> = sqlx::query_as(sql).bind(group_id);
-
-    let messages = state
-        .ps_interface
-        .generic_fetch(query)
-        .await
-        .map_err(|_| InternalError::DbError)?;
-
-    if let Some(oldest) = messages.last() {
-        let bytes = oldest.id.to_be_bytes();
-        let cursor = ENCODE_DECODE_ENGINE.encode(bytes);
-
-        let res = MsgResponse {
-            cursor: cursor,
-            pages: messages
-                .into_iter()
-                .map(
-                    |FullMsg {
-                         id: _,
-                         file_ids,
-                         message,
-                         group_id,
-                         user_id,
-                     }| Page {
-                        file_ids,
-                        message,
-                        group_id,
-                        user_id,
-                    },
-                )
-                .collect(),
-        };
-
-        return Ok(Res {
-            status: StatusCode::FOUND,
-            success: true,
-            msg: String::new(),
-            data: Some(res),
-        });
+        state.ps_interface.generic_fetch(messages_query).await? 
     } else {
+        let messages_query = sqlx::query_as!(GuildChannelMessage, 
+            r#"SELECT 
+                guild_messages.id AS id, 
+                guild_messages.message AS message,
+                COALESCE(array_agg(guild_message_objects.object_id) 
+                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS "file_ids!", 
+                guild_messages.channel_id AS channel_id,
+                guild_messages.user_id AS user_id 
+            FROM guild_messages 
+            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = guild_messages.id
+            WHERE guild_messages.channel_id = $1
+            GROUP BY guild_messages.id
+            ORDER BY guild_messages.id ASC
+            LIMIT 50;"#,
+            channel_id
+        );
+
+        state.ps_interface.generic_fetch(messages_query).await? 
+    };
+
+    if messages.is_empty() {
         return Err(InternalError::NoMatches);
     }
+
+    let cursor = if messages.len() == 50 && let Some(pin) = messages.iter().next_back() {
+        Some(pin.id)
+    } else {
+        None
+    };
+
+    return Ok(Res {
+        status: StatusCode::FOUND,
+        success: true,
+        msg: String::new(),
+        data: Some(GuildMsgResponse{
+            cursor: cursor,
+            pages: messages
+        }),
+    });
+}
+
+async fn get_dm_messages(
+    user_id: Uuid,
+    dm_id: Uuid,
+    cursor: Option<i64>,
+    state: AppState,
+) -> Result<Res<DmMsgResponse>, InternalError> {
+    let member_query = sqlx::query_as!(Dm, "SELECT * FROM dms WHERE id =  $1 AND (user_a = $2 OR user_b = $2)", dm_id, user_id);
+
+    state.ps_interface.generic_fetch(member_query)
+    .await?.into_iter().next().ok_or(InternalError::NoMatches)?;
+
+    let messages: Vec<DmMessage> = if let Some(pin) = cursor {
+        let messages_query = sqlx::query_as!(DmMessage, 
+            r#"SELECT 
+                dm_messages.id AS id, 
+                dm_messages.message AS message,
+                COALESCE(array_agg(guild_message_objects.object_id) 
+                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS "file_ids!", 
+                dm_messages.dm_id AS dm_id,
+                dm_messages.user_id AS user_id 
+            FROM dm_messages 
+            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = dm_messages.id
+            WHERE dm_messages.dm_id = $1 AND $2 > dm_messages.id
+            GROUP BY dm_messages.id
+            ORDER BY dm_messages.id ASC
+            LIMIT 50;"#,
+            dm_id,
+            pin
+        );
+
+        state.ps_interface.generic_fetch(messages_query).await? 
+    } else {
+        let messages_query = sqlx::query_as!(DmMessage, 
+            r#"SELECT 
+                dm_messages.id AS id, 
+                dm_messages.message AS message,
+                COALESCE(array_agg(guild_message_objects.object_id) 
+                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS "file_ids!", 
+                dm_messages.dm_id AS dm_id,
+                dm_messages.user_id AS user_id 
+            FROM dm_messages 
+            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = dm_messages.id
+            WHERE dm_messages.dm_id = $1
+            GROUP BY dm_messages.id
+            ORDER BY dm_messages.id ASC
+            LIMIT 50;"#,
+            dm_id
+        );
+
+        state.ps_interface.generic_fetch(messages_query).await? 
+    };
+
+    if messages.is_empty() {
+        return Err(InternalError::NoMatches);
+    }
+
+    let cursor = if messages.len() == 50 && let Some(pin) = messages.iter().next_back() {
+        Some(pin.id)
+    } else {
+        None
+    };
+
+    return Ok(Res {
+        status: StatusCode::FOUND,
+        success: true,
+        msg: String::new(),
+        data: Some(DmMsgResponse{
+            cursor: cursor,
+            pages: messages
+        }),
+    });
 }
 
 async fn get_guild_invites(

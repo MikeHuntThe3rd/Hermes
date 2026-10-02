@@ -1,0 +1,71 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT \n                guild_messages.id AS id, \n                guild_messages.message AS message,\n                COALESCE(array_agg(guild_message_objects.object_id) \n                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS \"file_ids!\", \n                guild_messages.channel_id AS channel_id,\n                guild_messages.user_id AS user_id \n            FROM guild_messages \n            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = guild_messages.id\n            WHERE guild_messages.channel_id = $1\n            GROUP BY guild_messages.id\n            ORDER BY guild_messages.id ASC\n            LIMIT 50;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "guild_messages",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "message",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "guild_messages",
+            "name": "message"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "file_ids!",
+        "type_info": "UuidArray",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "channel_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "guild_messages",
+            "name": "channel_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "guild_messages",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      null,
+      false,
+      true
+    ]
+  },
+  "hash": "a74b63557fa0526968e494bcecfab86555aa67eea0004f7757386ced190dbf76"
+}

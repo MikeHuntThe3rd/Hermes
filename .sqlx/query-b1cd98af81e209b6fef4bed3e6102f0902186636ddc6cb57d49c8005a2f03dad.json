@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM dms WHERE id =  $1 AND (user_a = $2 OR user_b = $2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dms",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_a",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dms",
+            "name": "user_a"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "user_b",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "dms",
+            "name": "user_b"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "b1cd98af81e209b6fef4bed3e6102f0902186636ddc6cb57d49c8005a2f03dad"
+}
