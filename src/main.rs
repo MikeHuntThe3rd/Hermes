@@ -146,7 +146,7 @@ async fn main() {
         .route("/{dm_id}/message/{message_id}", delete(delete_dm_message))
         .route("/{dm_id}/message/inital", get(get_inital_dm_messages))
         .route("/{dm_id}/message/{cursor}", get(get_dm_messages_from))
-        .route("/{dm_id}", get(delete_dm));
+        .route("/{dm_id}", delete(delete_dm));
 
     let channel: Router<AppState> = Router::new()
         .route("/inital", get(get_inital_channels))
@@ -188,7 +188,7 @@ async fn main() {
             "/{guild_id}/member/{member_id}",
             delete(delete_guild_member),
         )
-        .nest("{guild_id}/channel", channel);
+        .nest("/{guild_id}/channel", channel);
 
     let relations: Router<AppState> = Router::new()
         .route("/friend/inital", get(get_inital_friends))

@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::handlers::{Msg, StrippedGroup, fetch_guild_member};
+use crate::handlers::post::Grp;
+use crate::handlers::{Msg, fetch_guild_member};
 use crate::{
     auth::extractor::AuthUser,
     responses::error_t::{AuthError, GenericErr, InternalError},
@@ -80,7 +81,7 @@ pub async fn update_guild(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(guild_id): Path<Uuid>,
-    Json(data): Json<StrippedGroup>,
+    Json(data): Json<Grp>,
 ) -> Result<Res<()>, GenericErr> {
     let member = fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
         .await
@@ -122,7 +123,7 @@ pub async fn update_relation(
         .ps_interface
         .select_one((&["relating_user", "related_user"], &[auth.user_id, user_id]))
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
     rel.state = data.state;
 
@@ -272,7 +273,7 @@ pub async fn manage_friend_invite(
     } else {
         state
             .ps_interface
-            .delete_many::<Uuid, Relation>(&[auth.user_id, user_id])
+            .delete_many::<Uuid, Relation>(&[user_id, auth.user_id])
             .await
             .map_err(|_| InternalError::DbError)?;
     }
@@ -493,7 +494,7 @@ pub async fn update_channel(
 
     let channel: Channel = state
         .ps_interface
-        .select_one((&["id"], &[channel_id]))
+        .select_one((&["id", "guild_id"], &[channel_id, guild_id]))
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 

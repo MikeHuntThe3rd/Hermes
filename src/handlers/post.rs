@@ -113,6 +113,7 @@ pub async fn add_dm(
     State(state): State<AppState>,
     Path(member_id): Path<Uuid>,
 ) -> Result<Res<()>, InternalError> {
+    //TODO: add duplicate check
     state
         .ps_interface
         .select_one::<Uuid, User>((&["id"], &[member_id]))
@@ -160,11 +161,20 @@ pub async fn add_dm_message(
     State(state): State<AppState>,
     Path(dm_id): Path<Uuid>,
     Json(data): Json<Msg>,
-) -> Result<Res<()>, InternalError> {
+) -> Result<Res<()>, GenericErr> {
     if data.file_ids.is_empty() && data.message.is_none() {
-        return Err(InternalError::EmptyMessage);
+        return Err(GenericErr::Internal(InternalError::EmptyMessage));
     }
-    let dm: Dm = state.ps_interface.select_one((&["id"], &[dm_id])).await?;
+
+    let dm: Dm = state
+        .ps_interface
+        .select_one((&["id"], &[dm_id]))
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
+
+    if Some(auth.user_id) != dm.user_a && Some(auth.user_id) != dm.user_b {
+        return Err(GenericErr::Auth(AuthError::NonOwner));
+    }
 
     let msg: Dm_Message = state
         .ps_interface
@@ -177,7 +187,8 @@ pub async fn add_dm_message(
             },
             false,
         )
-        .await?;
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
     let msg_objs: Vec<Dm_Message_Object> = data
         .file_ids
@@ -194,9 +205,10 @@ pub async fn add_dm_message(
         state
             .ps_interface
             .delete_many::<i64, Dm_Message>(&[msg.id])
-            .await?;
+            .await
+            .map_err(|e| GenericErr::Internal(e))?;
 
-        return Err(InternalError::DbError);
+        return Err(GenericErr::Internal(InternalError::DbError));
     }
 
     return Ok(Res {
@@ -221,7 +233,7 @@ pub async fn add_guild_channel_message(
 
     state
         .ps_interface
-        .select_one::<Uuid, Channel>((&["id"], &[channel_id]))
+        .select_one::<Uuid, Channel>((&["id", "guild_id"], &[channel_id, guild_id]))
         .await?;
 
     let msg = state
@@ -275,9 +287,18 @@ pub async fn invite_guild_member(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
+    let member = fetch_guild_member(state.clone(), &guild_id, &data.user_id)
+        .await
+        .map_err(|e| GenericErr::Internal(e))
+        .ok();
+
+    if member.is_some() {
+        return Err(GenericErr::Internal(InternalError::DuplicateData));
+    }
+
     let invite = state
         .ps_interface
-        .select_one::<Uuid, Guild_Invite>((&["guild_id", "user_id"], &[guild_id, data.user_id]))
+        .select_one::<Uuid, Guild_Invite>((&["guild_id", "recipient"], &[guild_id, data.user_id]))
         .await
         .map_err(|e| GenericErr::Internal(e));
 
@@ -338,9 +359,9 @@ pub async fn create_friend_invite(
 
     let relation_opt: Option<Relation> = state
         .ps_interface
-        .select_one((&["relating_user", "related_user"], &[auth.user_id, user_id]))
+        .select_one((&["relating_user", "related_user"], &[user_id, auth.user_id]))
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))
+        .map_err(|e| GenericErr::Internal(e))
         .ok();
 
     if let Some(relation) = relation_opt {
@@ -368,7 +389,7 @@ pub async fn create_friend_invite(
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
     return Ok(Res {
-        status: StatusCode::OK,
+        status: StatusCode::CREATED,
         success: true,
         msg: String::new(),
         data: None,
@@ -502,10 +523,11 @@ pub async fn upload(
 
         let matches: Option<Object> = state
             .ps_interface
-            .select_one::<&str, Object>((&["hash"], &[&hash]))
+            .select_many::<&str, Object>(Some((&["hash"], &[&hash])), Some(1))
             .await
-            .map_err(|_| cleanup_err(temp_path.clone(), InternalError::DbError))
-            .ok();
+            .map_err(|_| cleanup_err(temp_path.clone(), InternalError::DbError))?
+            .into_iter()
+            .next();
 
         /* ===== CONSUME TEMP FILE ===== */
         let mime = if let Some(typ) = infer::get(

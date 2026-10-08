@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM guild_messages WHERE id = $1 AND channel_id = $2 LIMIT 1",
+  "query": "SELECT gm.* FROM guild_messages gm\n        JOIN channels ch ON ch.id = gm.channel_id\n        WHERE gm.id = $1 AND ch.id = $2 AND ch.guild_id = $3\n        LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -51,6 +51,7 @@
     "parameters": {
       "Left": [
         "Int8",
+        "Uuid",
         "Uuid"
       ]
     },
@@ -61,5 +62,5 @@
       true
     ]
   },
-  "hash": "6ebfffbe54eb90b30ce48d72349effbeac88fb23e1944856d92e6ca59886f92a"
+  "hash": "33ebcdb1439a3ec6ce86cb69aff3959ba2fa9de71ef81a6554949b5aead7d678"
 }

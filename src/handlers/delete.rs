@@ -16,7 +16,7 @@ pub async fn delete_self(
         JOIN guild_members gm ON gm.guild_id = guilds.id
         WHERE gm.member_id = $1
         AND gm.rank = $2
-        AND (SELECT 1 FROM guild_members gm2
+        AND (SELECT COUNT(*) FROM guild_members gm2
             WHERE gm2.guild_id = guilds.id AND gm2.rank = $2
         ) = 1;",
         auth.user_id,
@@ -34,7 +34,7 @@ pub async fn delete_self(
         .delete_many::<Uuid, User>(&vec![auth.user_id])
         .await?;
 
-    if deletes.is_empty() {
+    if !deletes.is_empty() {
         return Ok(Res {
             status: StatusCode::OK,
             success: true,
@@ -153,20 +153,22 @@ pub async fn delete_relation(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let (caller_to_user, user_to_caller): (Vec<Relation>, Vec<Relation>) = (
+    let (caller_to_user, user_to_caller) = (
         state
             .ps_interface
             .delete_many::<Uuid, Relation>(&[auth.user_id, user_id])
             .await
-            .map_err(|_| GenericErr::Internal(InternalError::DbError))?,
+            .map_err(|_| GenericErr::Internal(InternalError::DbError))
+            .ok(),
         state
             .ps_interface
             .delete_many::<Uuid, Relation>(&[user_id, auth.user_id])
             .await
-            .map_err(|_| GenericErr::Internal(InternalError::DbError))?,
+            .map_err(|_| GenericErr::Internal(InternalError::DbError))
+            .ok(),
     );
 
-    if caller_to_user.is_empty() || user_to_caller.is_empty() {
+    if caller_to_user.is_none() && user_to_caller.is_none() {
         return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 
@@ -238,9 +240,13 @@ pub async fn delete_guild_channel_message(
 
     let messages_query = sqlx::query_as!(
         Guild_Message,
-        "SELECT * FROM guild_messages WHERE id = $1 AND channel_id = $2 LIMIT 1",
+        "SELECT gm.* FROM guild_messages gm
+        JOIN channels ch ON ch.id = gm.channel_id
+        WHERE gm.id = $1 AND ch.id = $2 AND ch.guild_id = $3
+        LIMIT 1",
         message_id,
-        channel_id
+        channel_id,
+        guild_id
     );
 
     state
@@ -258,7 +264,7 @@ pub async fn delete_guild_channel_message(
 
     let deletes = state
         .ps_interface
-        .delete_many::<i64, Dm_Message>(&vec![message_id])
+        .delete_many::<i64, Guild_Message>(&vec![message_id])
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -277,15 +283,15 @@ pub async fn delete_guild_channel_message(
 pub async fn delete_channel(
     auth: AuthUser,
     State(state): State<AppState>,
-    Path((group_id, channel_id)): Path<(Uuid, Uuid)>,
+    Path((guild_id, channel_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Res<()>, GenericErr> {
-    let member = fetch_guild_member(state.clone(), &group_id, &auth.user_id)
+    let member = fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
     state
         .ps_interface
-        .select_one::<Uuid, Channel>((&["id"], &[channel_id]))
+        .select_one::<Uuid, Channel>((&["id", "guild_id"], &[channel_id, guild_id]))
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
