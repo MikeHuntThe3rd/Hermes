@@ -10,7 +10,7 @@ pub async fn cleaner_subprocess(state: AppState) {
 
         let tracked_objs: Vec<Object> = state
             .ps_interface
-            .select::<i32, Object>(None, None)
+            .select_many::<i32, Object>(None, None)
             .await
             .unwrap_or(vec![]);
 

@@ -136,6 +136,8 @@ async fn main() {
 
     let dm: Router<AppState> = Router::new()
         .route("/member/{member_id}", post(add_dm))
+        .route("/inital", get(get_inital_dms))
+        .route("/{cursor}", get(get_dms_from))
         .route("/invite/inital", get(get_inital_dm_invites))
         .route("/invite/{cursor}", get(get_dm_invites_from))
         .route("/invite/{invite_id}", patch(manage_dm_invite))
@@ -143,7 +145,8 @@ async fn main() {
         .route("/{dm_id}/message/{message_id}", patch(update_dm_message))
         .route("/{dm_id}/message/{message_id}", delete(delete_dm_message))
         .route("/{dm_id}/message/inital", get(get_inital_dm_messages))
-        .route("/{dm_id}/message/{cursor}", get(get_dm_messages_from));
+        .route("/{dm_id}/message/{cursor}", get(get_dm_messages_from))
+        .route("/{dm_id}", get(delete_dm));
 
     let channel: Router<AppState> = Router::new()
         .route("/inital", get(get_inital_channels))

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM\n            dm_invites WHERE dm_invites.recipient = $1 ORDER BY dm_invites.id DESC LIMIT 50;",
+  "query": "SELECT * FROM\n            dm_invites WHERE dm_invites.recipient = $1 \n            ORDER BY dm_invites.id DESC LIMIT 50;",
   "describe": {
     "columns": [
       {
@@ -48,5 +48,5 @@
       false
     ]
   },
-  "hash": "40279b76b894a3c0fdfaf81d6f65a1e8c3642cda625752c322e492d235ac5d8d"
+  "hash": "87c67c56e5bc1154107dfd10661c7667ac271c319ebaa1a8985b4dbe12c91895"
 }

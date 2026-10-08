@@ -84,12 +84,9 @@ pub async fn delete_dm(
 ) -> Result<Res<()>, GenericErr> {
     let dm: Dm = state
         .ps_interface
-        .select(Some((&["id"], &[dm_id])), None)
+        .select_one((&["id"], &[dm_id]))
         .await
-        .map_err(|e| GenericErr::Internal(e))?
-        .into_iter()
-        .next()
-        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
     if Some(auth.user_id) != dm.user_a && Some(auth.user_id) != dm.user_b {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
@@ -97,7 +94,7 @@ pub async fn delete_dm(
 
     let delete = state
         .ps_interface
-        .delete::<Uuid, Dm>(&vec![dm_id])
+        .delete_many::<Uuid, Dm>(&vec![dm_id])
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 

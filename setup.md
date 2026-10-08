@@ -27,13 +27,13 @@ docker exec sqlx-dev psql -U postgres -d mydb -f /schema.sql
 echo 'DATABASE_URL=postgresql://postgres:pw@localhost:5432/mydb' > .env
 
 # 5. Install sqlx-cli (rustls avoids NixOS openssl/pkg-config linking issues)
-nix-shell -p pkg-config --run "cargo install sqlx-cli --no-default-features --features rustls,postgres"
+nix-shell -p pkg-config --run "sudo cargo install sqlx-cli --no-default-features --features rustls,postgres"
 
 # 6. Sanity check the project compiles against the live DB
 cargo check
 
 # 7. Generate the offline query cache
-cargo sqlx prepare --workspace
+sudo cargo sqlx prepare --workspace
 
 # 8. Verify the cache was written
 ls .sqlx

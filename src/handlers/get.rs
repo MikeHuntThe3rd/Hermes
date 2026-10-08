@@ -72,6 +72,12 @@ pub struct GuildMembersResponse {
 }
 
 #[derive(Serialize)]
+pub struct DmResponse {
+    cursor: Option<Uuid>,
+    pages: Vec<Dm>,
+}
+
+#[derive(Serialize)]
 pub struct StrippedUserResponse {
     pub cursor: Option<Uuid>,
     pub pages: Vec<StrippedUser>,
@@ -95,6 +101,21 @@ pub async fn get_dm_invites_from(
     State(state): State<AppState>,
 ) -> Result<Res<DmInvitesResponse>, InternalError> {
     return get_dm_invites(auth.user_id, Some(cursor), state).await;
+}
+
+pub async fn get_inital_dms(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Res<DmResponse>, InternalError> {
+    return get_dms(auth.user_id, None, state).await;
+}
+
+pub async fn get_dms_from(
+    auth: AuthUser,
+    Path(cursor): Path<Uuid>,
+    State(state): State<AppState>,
+) -> Result<Res<DmResponse>, InternalError> {
+    return get_dms(auth.user_id, Some(cursor), state).await;
 }
 
 pub async fn get_inital_channels(
@@ -218,7 +239,8 @@ pub async fn get_channel_messages_from(
     Path((guild_id, channel_id, cursor)): Path<(Uuid, Uuid, i64)>,
     State(state): State<AppState>,
 ) -> Result<Res<GuildMsgResponse>, InternalError> {
-    return get_guild_channel_messages(auth.user_id, guild_id, channel_id, Some(cursor), state).await;
+    return get_guild_channel_messages(auth.user_id, guild_id, channel_id, Some(cursor), state)
+        .await;
 }
 
 pub async fn pull(
@@ -239,6 +261,61 @@ pub async fn pull(
 }
 
 /* ===== Functions ===== */
+
+async fn get_dms(
+    user_id: Uuid,
+    cursor: Option<Uuid>,
+    state: AppState,
+) -> Result<Res<DmResponse>, InternalError> {
+    let dms: Vec<Dm> = if let Some(pin) = cursor {
+        let query = sqlx::query_as!(
+            Dm,
+            "
+            SELECT * FROM dms 
+            WHERE ($1 = dms.user_a OR $1 = dms.user_b) AND $2 > dms.id
+            ORDER BY dms.id DESC
+            LIMIT 50",
+            user_id,
+            pin
+        );
+
+        state.ps_interface.generic_fetch(query).await?
+    } else {
+        let query = sqlx::query_as!(
+            Dm,
+            "
+            SELECT * FROM dms 
+            WHERE ($1 = dms.user_a OR $1 = dms.user_b)
+            ORDER BY dms.id DESC
+            LIMIT 50",
+            user_id
+        );
+
+        state.ps_interface.generic_fetch(query).await?
+    };
+
+    if dms.is_empty() {
+        return Err(InternalError::NoMatches);
+    }
+
+    let cursor = if dms.len() == 50
+        && let Some(pin) = dms.iter().next_back()
+    {
+        Some(pin.id)
+    } else {
+        None
+    };
+
+    return Ok(Res {
+        status: StatusCode::OK,
+        success: true,
+        msg: String::new(),
+        data: Some(DmResponse {
+            cursor: cursor,
+            pages: dms,
+        }),
+    });
+}
 
 async fn get_friends(
     user_id: Uuid,
@@ -484,7 +561,8 @@ async fn get_guild_channel_messages(
     fetch_guild_member(state.clone(), &guild_id, &user_id).await?;
 
     let messages: Vec<GuildChannelMessage> = if let Some(pin) = cursor {
-        let messages_query = sqlx::query_as!(GuildChannelMessage, 
+        let messages_query = sqlx::query_as!(
+            GuildChannelMessage,
             r#"SELECT 
                 guild_messages.id AS id, 
                 guild_messages.message AS message,
@@ -502,9 +580,10 @@ async fn get_guild_channel_messages(
             pin
         );
 
-        state.ps_interface.generic_fetch(messages_query).await? 
+        state.ps_interface.generic_fetch(messages_query).await?
     } else {
-        let messages_query = sqlx::query_as!(GuildChannelMessage, 
+        let messages_query = sqlx::query_as!(
+            GuildChannelMessage,
             r#"SELECT 
                 guild_messages.id AS id, 
                 guild_messages.message AS message,
@@ -521,14 +600,16 @@ async fn get_guild_channel_messages(
             channel_id
         );
 
-        state.ps_interface.generic_fetch(messages_query).await? 
+        state.ps_interface.generic_fetch(messages_query).await?
     };
 
     if messages.is_empty() {
         return Err(InternalError::NoMatches);
     }
 
-    let cursor = if messages.len() == 50 && let Some(pin) = messages.iter().next_back() {
+    let cursor = if messages.len() == 50
+        && let Some(pin) = messages.iter().next_back()
+    {
         Some(pin.id)
     } else {
         None
@@ -538,9 +619,9 @@ async fn get_guild_channel_messages(
         status: StatusCode::FOUND,
         success: true,
         msg: String::new(),
-        data: Some(GuildMsgResponse{
+        data: Some(GuildMsgResponse {
             cursor: cursor,
-            pages: messages
+            pages: messages,
         }),
     });
 }
@@ -551,13 +632,24 @@ async fn get_dm_messages(
     cursor: Option<i64>,
     state: AppState,
 ) -> Result<Res<DmMsgResponse>, InternalError> {
-    let member_query = sqlx::query_as!(Dm, "SELECT * FROM dms WHERE id =  $1 AND (user_a = $2 OR user_b = $2)", dm_id, user_id);
+    let member_query = sqlx::query_as!(
+        Dm,
+        "SELECT * FROM dms WHERE id =  $1 AND (user_a = $2 OR user_b = $2)",
+        dm_id,
+        user_id
+    );
 
-    state.ps_interface.generic_fetch(member_query)
-    .await?.into_iter().next().ok_or(InternalError::NoMatches)?;
+    state
+        .ps_interface
+        .generic_fetch(member_query)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(InternalError::NoMatches)?;
 
     let messages: Vec<DmMessage> = if let Some(pin) = cursor {
-        let messages_query = sqlx::query_as!(DmMessage, 
+        let messages_query = sqlx::query_as!(
+            DmMessage,
             r#"SELECT 
                 dm_messages.id AS id, 
                 dm_messages.message AS message,
@@ -575,9 +667,10 @@ async fn get_dm_messages(
             pin
         );
 
-        state.ps_interface.generic_fetch(messages_query).await? 
+        state.ps_interface.generic_fetch(messages_query).await?
     } else {
-        let messages_query = sqlx::query_as!(DmMessage, 
+        let messages_query = sqlx::query_as!(
+            DmMessage,
             r#"SELECT 
                 dm_messages.id AS id, 
                 dm_messages.message AS message,
@@ -594,14 +687,16 @@ async fn get_dm_messages(
             dm_id
         );
 
-        state.ps_interface.generic_fetch(messages_query).await? 
+        state.ps_interface.generic_fetch(messages_query).await?
     };
 
     if messages.is_empty() {
         return Err(InternalError::NoMatches);
     }
 
-    let cursor = if messages.len() == 50 && let Some(pin) = messages.iter().next_back() {
+    let cursor = if messages.len() == 50
+        && let Some(pin) = messages.iter().next_back()
+    {
         Some(pin.id)
     } else {
         None
@@ -611,9 +706,9 @@ async fn get_dm_messages(
         status: StatusCode::FOUND,
         success: true,
         msg: String::new(),
-        data: Some(DmMsgResponse{
+        data: Some(DmMsgResponse {
             cursor: cursor,
-            pages: messages
+            pages: messages,
         }),
     });
 }
@@ -680,9 +775,10 @@ async fn get_dm_invites(
         let query = sqlx::query_as!(
             Dm_Invite,
             "SELECT * FROM
-            dm_invites WHERE dm_invites.recipient = $1 AND $2 > dm_invites.id ORDER BY dm_invites.id DESC LIMIT 50;",
+            dm_invites WHERE dm_invites.recipient = $1 AND $2 > dm_invites.id 
+            ORDER BY dm_invites.id DESC LIMIT 50;",
             user_id,
-            pin 
+            pin
         );
 
         state.ps_interface.generic_fetch(query).await?
@@ -690,7 +786,8 @@ async fn get_dm_invites(
         let query = sqlx::query_as!(
             Dm_Invite,
             "SELECT * FROM
-            dm_invites WHERE dm_invites.recipient = $1 ORDER BY dm_invites.id DESC LIMIT 50;",
+            dm_invites WHERE dm_invites.recipient = $1 
+            ORDER BY dm_invites.id DESC LIMIT 50;",
             user_id
         );
 
@@ -702,15 +799,15 @@ async fn get_dm_invites(
     }
 
     let cursor: Option<Uuid> = if invites.len() == 50
-        && let Some(back) = invites.iter().next_back()
+        && let Some(pin) = invites.iter().next_back()
     {
-        Some(back.id)
+        Some(pin.id)
     } else {
         None
     };
 
     return Ok(Res {
-        status: StatusCode::FOUND,
+        status: StatusCode::OK,
         success: true,
         msg: String::new(),
         data: Some(DmInvitesResponse {
@@ -726,7 +823,8 @@ pub async fn get_friend_invites(
     state: AppState,
 ) -> Result<Res<RelationInvitesResponse>, InternalError> {
     let invites: Vec<StrippedUser> = if let Some(pin) = cursor {
-        let query = sqlx::query_as!(StrippedUser, 
+        let query = sqlx::query_as!(
+            StrippedUser,
             r#"SELECT users.id AS user_id, nickname, pfp FROM users 
             JOIN relations ON relations.related_user = users.id 
             WHERE (relations.state, users.id) = ($1, $2) AND $3 > users.id;"#,
@@ -737,7 +835,8 @@ pub async fn get_friend_invites(
 
         state.ps_interface.generic_fetch(query).await?
     } else {
-        let query = sqlx::query_as!(StrippedUser, 
+        let query = sqlx::query_as!(
+            StrippedUser,
             r#"SELECT users.id AS user_id, nickname, pfp FROM users 
             JOIN relations ON relations.related_user = users.id 
             WHERE (relations.state, users.id) = ($1, $2);"#,
