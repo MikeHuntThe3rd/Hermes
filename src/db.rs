@@ -27,14 +27,30 @@ impl PsInterface {
             .database("records_ps");
 
         let conn_pool = PgPoolOptions::new()
-            .max_connections(10)
-            .connect_with(opt.clone())
+            .max_connections(20)
+            .connect_with(opt)
             .await?;
 
         return Ok(PsInterface { pool: conn_pool });
     }
 
-    pub async fn insert<T>(&self, data: &[T], insert_all: bool) -> Result<Vec<T>, InternalError>
+    pub async fn insert_one<T>(&self, data: T, insert_all: bool) -> Result<T, InternalError>
+    where
+        T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
+    {
+        return self
+            .insert_many(&[data], insert_all)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(InternalError::NoMatches);
+    }
+
+    pub async fn insert_many<T>(
+        &self,
+        data: &[T],
+        insert_all: bool,
+    ) -> Result<Vec<T>, InternalError>
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
@@ -96,7 +112,7 @@ impl PsInterface {
         Ok(res)
     }
 
-    pub async fn update<T>(&self, data: T) -> Result<T, InternalError>
+    pub async fn update_many<T>(&self, data: T) -> Result<T, InternalError>
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
@@ -139,7 +155,7 @@ impl PsInterface {
         Ok(res)
     }
 
-    pub async fn delete<I, T>(&self, id_s: &[I]) -> Result<Vec<T>, InternalError>
+    pub async fn delete_many<I, T>(&self, id_s: &[I]) -> Result<Vec<T>, InternalError>
     where
         I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>,
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
@@ -172,7 +188,20 @@ impl PsInterface {
         Ok(res)
     }
 
-    pub async fn select<I, T>(
+    pub async fn select_one<I, T>(&self, id_s: (&[&str], &[I])) -> Result<T, InternalError>
+    where
+        I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>,
+        T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
+    {
+        return self
+            .select_many(Some(id_s), Some(1))
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(InternalError::NoMatches);
+    }
+
+    pub async fn select_many<I, T>(
         &self,
         id_s: Option<(&[&str], &[I])>,
         limit: Option<i32>,
