@@ -24,6 +24,7 @@ use fred::{
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use uuid::Uuid;
 
+use crate::responses::error_t::InternalError;
 use crate::types::PrivilegeT;
 use auth::endpoints::*;
 use db::PsInterface;
@@ -39,31 +40,39 @@ async fn ensure_master_user(state: AppState) {
         env::var("M_PASSWORD").expect("the variable for the master user's password is expected"),
     );
 
-    let user_s = inf
-        .select::<String, User>(
-            Some((
-                &["username", "password"],
-                &vec![usr_nm.clone(), pswrd.clone()],
-            )),
-            None,
-        )
-        .await
-        .expect("master user querying is expected to succeed");
+    let user = inf
+        .select_one::<String, User>((
+            &["username", "password"],
+            &vec![usr_nm.clone(), pswrd.clone()],
+        ))
+        .await;
 
-    if user_s.len() < 1 {
-        inf.insert::<User>(
-            &[User {
-                id: Uuid::new_v4(),
-                nickname: "master".to_string(),
-                prv: PrivilegeT::Proprietor,
-                username: usr_nm,
-                password: pswrd,
-                pfp: None,
-            }],
-            false,
-        )
-        .await
-        .expect("master user inserting is expected to succeed");
+    if let Err(error) = user {
+        match error {
+            InternalError::DbError => {
+                panic!("master user querying is expected to succeed");
+            }
+
+            InternalError::NoMatches => {
+                inf.insert_one::<User>(
+                    User {
+                        id: Uuid::new_v4(),
+                        nickname: "master".to_string(),
+                        prv: PrivilegeT::Proprietor,
+                        username: usr_nm,
+                        password: pswrd,
+                        pfp: None,
+                    },
+                    false,
+                )
+                .await
+                .expect("master user inserting is expected to succeed");
+            }
+
+            _ => {
+                panic!("unknown error occured while creating master user")
+            }
+        }
     }
 }
 
@@ -130,7 +139,6 @@ async fn main() {
         .route("/invite/inital", get(get_inital_dm_invites))
         .route("/invite/{cursor}", get(get_dm_invites_from))
         .route("/invite/{invite_id}", patch(manage_dm_invite))
-        .route("/{dm_id}", delete(delete_dm))
         .route("/{dm_id}/message", post(add_dm_message))
         .route("/{dm_id}/message/{message_id}", patch(update_dm_message))
         .route("/{dm_id}/message/{message_id}", delete(delete_dm_message))
@@ -140,11 +148,23 @@ async fn main() {
     let channel: Router<AppState> = Router::new()
         .route("/inital", get(get_inital_channels))
         .route("/{cursor}", get(get_channels_from))
-        .route("/{channel_id}/message", post(add_guild_message))
-        .route("/{channel_id}/message/{message_id}", patch(update_guild_channel_message))
-        .route("/{channel_id}/message/{message_id}", delete(delete_guild_channel_message))
-        .route("/{channel_id}/message/inital", get(get_inital_channel_messages))
-        .route("/{channel_id}/message/{cursor}", get(get_channel_messages_from))
+        .route("/{channel_id}/message", post(add_guild_channel_message))
+        .route(
+            "/{channel_id}/message/{message_id}",
+            patch(update_guild_channel_message),
+        )
+        .route(
+            "/{channel_id}/message/{message_id}",
+            delete(delete_guild_channel_message),
+        )
+        .route(
+            "/{channel_id}/message/inital",
+            get(get_inital_channel_messages),
+        )
+        .route(
+            "/{channel_id}/message/{cursor}",
+            get(get_channel_messages_from),
+        )
         .route("/", post(add_guild_channel))
         .route("/{channel_id}", patch(update_channel))
         .route("/{channel_id}", delete(delete_channel));

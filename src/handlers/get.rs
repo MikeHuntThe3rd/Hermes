@@ -228,12 +228,8 @@ pub async fn pull(
 ) -> Result<impl IntoResponse, InternalError> {
     let obj: Object = state
         .ps_interface
-        .select::<Uuid, Object>(Some((Object::id_columns(), &[object_id])), None)
-        .await
-        .map_err(|_| InternalError::DbError)?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
+        .select_one::<Uuid, Object>((Object::id_columns(), &[object_id]))
+        .await?;
 
     Ok(Response::builder()
         .header("X-Accel-Redirect", format!("/files/objs/{}", obj.rel_path))
@@ -423,7 +419,7 @@ async fn get_guild_members(
 ) -> Result<Res<GuildMembersResponse>, InternalError> {
     state
         .ps_interface
-        .select::<Uuid, Guild>(Some((&["id"], &[guild_id])), Some(1))
+        .select_one::<Uuid, Guild>((&["id"], &[guild_id]))
         .await?;
 
     let members: Vec<StrippedMember> = if let Some(pin) = cursor {

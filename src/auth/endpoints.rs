@@ -42,32 +42,25 @@ pub async fn login(
     State(inf): State<AppState>,
     Json(data): Json<LoginCred>,
 ) -> Result<Res<UserTokenObj>, GenericErr> {
-    let rows: Vec<User> = inf
+    let user: User = inf
         .ps_interface
-        .select(
-            Some((
-                &vec!["username", "password"],
-                &vec![&data.username, &data.password],
-            )),
-            None,
-        )
+        .select_one((
+            &vec!["username", "password"],
+            &vec![&data.username, &data.password],
+        ))
         .await
-        .map_err(|e| GenericErr::Internal(e))?;
+        .map_err(|e| GenericErr::Auth(AuthError::InvalidCredentials))?;
 
-    if rows.len() == 1
-        && let Some(frst) = rows.first()
-        && frst.username == data.username
-        && frst.password == data.password
-    {
-        let access = create_jwt(frst.id, TokenType::Access, &inf.jwt_secret)
+    if user.username == data.username && user.password == data.password {
+        let access = create_jwt(user.id, TokenType::Access, &inf.jwt_secret)
             .await
             .map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
-        let refresh = create_jwt(frst.id, TokenType::Refresh, &inf.jwt_secret)
+        let refresh = create_jwt(user.id, TokenType::Refresh, &inf.jwt_secret)
             .await
             .map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
         let dta = UserTokenObj {
-            user_data: frst.clone(),
+            user_data: user,
             token_data: TokenPair {
                 access_tkn: access,
                 refresh_tkn: refresh,
@@ -176,35 +169,32 @@ pub async fn sign_up(
         .await
         .map_err(|_| GenericErr::Internal(InternalError::RedisError))?;
 
-    let usr = inf
+    let user: User = inf
         .ps_interface
-        .insert::<User>(
-            &[User {
+        .insert_one(
+            User {
                 id: PLACE_HOLDER_UUID,
                 nickname: data.nickname,
                 prv: auth.claims.priv_level,
                 username: data.username,
                 password: data.password,
                 pfp: None,
-            }],
+            },
             false,
         )
         .await
-        .map_err(|e| GenericErr::Internal(e))?
-        .into_iter()
-        .next()
-        .ok_or(GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
-    let access: String = create_jwt(usr.id, TokenType::Access, &inf.jwt_secret)
+    let access: String = create_jwt(user.id, TokenType::Access, &inf.jwt_secret)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
-    let refresh: String = create_jwt(usr.id, TokenType::Refresh, &inf.jwt_secret)
+    let refresh: String = create_jwt(user.id, TokenType::Refresh, &inf.jwt_secret)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DecodeEncodeErr))?;
 
     let dta = UserTokenObj {
-        user_data: usr,
+        user_data: user,
         token_data: TokenPair {
             access_tkn: access,
             refresh_tkn: refresh,

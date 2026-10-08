@@ -112,7 +112,7 @@ impl PsInterface {
         Ok(res)
     }
 
-    pub async fn update_many<T>(&self, data: T) -> Result<T, InternalError>
+    pub async fn update_one<T>(&self, data: T) -> Result<T, InternalError>
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {

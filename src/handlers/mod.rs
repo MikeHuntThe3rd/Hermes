@@ -47,15 +47,10 @@ pub async fn fetch_guild_member(
     guild_id: &Uuid,
     member_id: &Uuid,
 ) -> Result<Guild_Member, InternalError> {
-    let groups: Vec<Guild_Member> = state
+    let member: Guild_Member = state
         .ps_interface
-        .select(
-            Some((&["guild_id", "member_id"], &[guild_id, member_id])),
-            None,
-        )
+        .select_one((&["guild_id", "member_id"], &[guild_id, member_id]))
         .await?;
 
-    let first = groups.into_iter().next().ok_or(InternalError::NoMatches)?;
-
-    return Ok(first);
+    return Ok(member);
 }

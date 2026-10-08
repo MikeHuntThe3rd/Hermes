@@ -51,16 +51,13 @@ pub async fn update_self(
 
     let old_user: User = state
         .ps_interface
-        .select(Some((&["id"], &[auth.user_id])), None)
+        .select_one((&["id"], &[auth.user_id]))
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?
-        .into_iter()
-        .next()
-        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
     state
         .ps_interface
-        .update(User {
+        .update_one(User {
             id: auth.user_id,
             nickname: data.nickname,
             prv: old_user.prv,
@@ -95,7 +92,7 @@ pub async fn update_guild(
 
     state
         .ps_interface
-        .update(Guild {
+        .update_one(Guild {
             id: guild_id,
             name: data.name,
             gp: data.gp,
@@ -121,25 +118,17 @@ pub async fn update_relation(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let rels: Vec<Relation> = state
+    let mut rel: Relation = state
         .ps_interface
-        .select(
-            Some((&["relating_user", "related_user"], &[auth.user_id, user_id])),
-            None,
-        )
+        .select_one((&["relating_user", "related_user"], &[auth.user_id, user_id]))
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
-
-    let mut rel = rels
-        .into_iter()
-        .next()
-        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
     rel.state = data.state;
 
     state
         .ps_interface
-        .update(rel)
+        .update_one(rel)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -157,26 +146,24 @@ pub async fn manage_guild_invite(
     Path(invite_id): Path<Uuid>,
     Json(data): Json<InvMng>,
 ) -> Result<Res<()>, InternalError> {
-    let invs: Vec<Guild_Invite> = state
+    let invite: Guild_Invite = state
         .ps_interface
-        .select(Some((&["id"], &[invite_id])), None)
+        .select_one((&["id"], &[invite_id]))
         .await?;
 
-    let inv: Guild_Invite = invs.into_iter().next().ok_or(InternalError::NoMatches)?;
-
-    if inv.recipient != auth.user_id {
+    if invite.recipient != auth.user_id {
         return Err(InternalError::NoMatches);
     }
 
     if data.accept {
         state
             .ps_interface
-            .insert::<Guild_Member>(
-                &[Guild_Member {
-                    guild_id: inv.guild_id,
-                    member_id: inv.recipient,
-                    rank: inv.rank,
-                }],
+            .insert_one::<Guild_Member>(
+                Guild_Member {
+                    guild_id: invite.guild_id,
+                    member_id: invite.recipient,
+                    rank: invite.rank,
+                },
                 true,
             )
             .await?;
@@ -184,7 +171,7 @@ pub async fn manage_guild_invite(
 
     state
         .ps_interface
-        .delete::<Uuid, Guild_Invite>(&[inv.id])
+        .delete_many::<Uuid, Guild_Invite>(&[invite.id])
         .await?;
 
     return Ok(Res {
@@ -201,25 +188,19 @@ pub async fn manage_dm_invite(
     Path(invite_id): Path<Uuid>,
     Json(data): Json<InvMng>,
 ) -> Result<Res<()>, InternalError> {
-    let inv: Dm_Invite = state
+    let invite: Dm_Invite = state
         .ps_interface
-        .select(Some((&["id"], &[invite_id])), None)
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
+        .select_one((&["id"], &[invite_id]))
+        .await?;
 
-    if inv.recipient != auth.user_id {
+    if invite.recipient != auth.user_id {
         return Err(InternalError::NoMatches);
     }
 
     let dm: Dm = state
         .ps_interface
-        .select(Some((&["id"], &[inv.dm_id])), Some(1))
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
+        .select_one((&["id"], &[invite.dm_id]))
+        .await?;
 
     let existing_user = if let Some(user) = dm.user_a {
         user
@@ -232,17 +213,17 @@ pub async fn manage_dm_invite(
     if data.accept {
         state
             .ps_interface
-            .update(Dm {
+            .update_one(Dm {
                 id: dm.id,
                 user_a: Some(existing_user),
-                user_b: Some(inv.recipient),
+                user_b: Some(invite.recipient),
             })
             .await?;
     }
 
     state
         .ps_interface
-        .delete::<Uuid, Dm_Invite>(&[inv.id])
+        .delete_many::<Uuid, Dm_Invite>(&[invite.id])
         .await?;
 
     return Ok(Res {
@@ -259,16 +240,11 @@ pub async fn manage_friend_invite(
     Path(user_id): Path<Uuid>,
     Json(data): Json<InvMng>,
 ) -> Result<Res<()>, InternalError> {
-    let invs: Vec<Relation> = state
+    let mut inv: Relation = state
         .ps_interface
-        .select(
-            Some((&["relating_user", "related_user"], &[user_id, auth.user_id])),
-            None,
-        )
+        .select_one((&["relating_user", "related_user"], &[user_id, auth.user_id]))
         .await
         .map_err(|_| InternalError::DbError)?;
-
-    let mut inv: Relation = invs.into_iter().next().ok_or(InternalError::NoMatches)?;
 
     if inv.state != RelationT::Pending {
         return Err(InternalError::NoMatches);
@@ -278,17 +254,17 @@ pub async fn manage_friend_invite(
         inv.state = RelationT::Friends;
         state
             .ps_interface
-            .update(inv)
+            .update_one(inv)
             .await
             .map_err(|_| InternalError::DbError)?;
         state
             .ps_interface
-            .insert(
-                &[Relation {
+            .insert_one(
+                Relation {
                     relating_user: auth.user_id,
                     related_user: user_id,
                     state: RelationT::Friends,
-                }],
+                },
                 true,
             )
             .await
@@ -296,7 +272,7 @@ pub async fn manage_friend_invite(
     } else {
         state
             .ps_interface
-            .delete::<Uuid, Relation>(&[auth.user_id, user_id])
+            .delete_many::<Uuid, Relation>(&[auth.user_id, user_id])
             .await
             .map_err(|_| InternalError::DbError)?;
     }
@@ -319,7 +295,8 @@ pub async fn update_guild_channel_message(
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    let messages_query = sqlx::query_as!(Guild_Message, 
+    let messages_query = sqlx::query_as!(
+        Guild_Message,
         "SELECT * FROM guild_messages WHERE guild_messages.id = $1 AND guild_messages.channel_id = $2 LIMIT 1",
         message_id,
         channel_id
@@ -347,7 +324,7 @@ pub async fn update_guild_channel_message(
 
     state
         .ps_interface
-        .update::<Guild_Message>(Guild_Message {
+        .update_one::<Guild_Message>(Guild_Message {
             id: messages.id,
             channel_id: messages.channel_id,
             message: data.message,
@@ -358,7 +335,7 @@ pub async fn update_guild_channel_message(
 
     let old_objs_hash: HashSet<Uuid> = state
         .ps_interface
-        .select(Some((&["message_id"], &[messages.id])), None)
+        .select_many(Some((&["message_id"], &[messages.id])), None)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?
         .into_iter()
@@ -379,11 +356,11 @@ pub async fn update_guild_channel_message(
 
     state
         .ps_interface
-        .insert(&insert_objs, true)
+        .insert_many(&insert_objs, true)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    let delete_query = sqlx::query!( 
+    let delete_query = sqlx::query!(
         r#"DELETE FROM guild_message_objects WHERE message_id = $1 AND object_id = ANY($2);"#,
         message_id,
         delete_objs.as_slice()
@@ -409,19 +386,20 @@ pub async fn update_dm_message(
     Path((dm_id, message_id)): Path<(Uuid, i64)>,
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, GenericErr> {
-    state.ps_interface.select::<Uuid, Dm>(Some((&["id"], &[dm_id])), Some(1))
-    .await.map_err(|e| GenericErr::Internal(e))?
-    .into_iter()
-    .next()
-    .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+    state
+        .ps_interface
+        .select_one::<Uuid, Dm>((&["id"], &[dm_id]))
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
-    let messages_query = sqlx::query_as!(Dm_Message, 
+    let messages_query = sqlx::query_as!(
+        Dm_Message,
         "SELECT * FROM dm_messages WHERE id = $1 AND dm_id = $2 LIMIT 1",
         message_id,
         dm_id
     );
 
-    let messages: Dm_Message = state
+    let message: Dm_Message = state
         .ps_interface
         .generic_fetch(messages_query)
         .await
@@ -430,7 +408,7 @@ pub async fn update_dm_message(
         .next()
         .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
-    match messages.user_id {
+    match message.user_id {
         Some(msg_id) => {
             if msg_id != auth.user_id {
                 return Err(GenericErr::Auth(AuthError::NonOwner));
@@ -443,18 +421,18 @@ pub async fn update_dm_message(
 
     state
         .ps_interface
-        .update::<Dm_Message>(Dm_Message {
-            id: messages.id,
-            dm_id: messages.dm_id,
+        .update_one::<Dm_Message>(Dm_Message {
+            id: message.id,
+            dm_id: message.dm_id,
             message: data.message,
-            user_id: messages.user_id,
+            user_id: message.user_id,
         })
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
     let old_objs_hash: HashSet<Uuid> = state
         .ps_interface
-        .select(Some((&["message_id"], &[messages.id])), None)
+        .select_many(Some((&["message_id"], &[message.id])), None)
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?
         .into_iter()
@@ -466,7 +444,7 @@ pub async fn update_dm_message(
     let insert_objs: Vec<Dm_Message_Object> = new_objs_hash
         .difference(&old_objs_hash)
         .map(|obj_id| Dm_Message_Object {
-            message_id: messages.id,
+            message_id: message.id,
             object_id: *obj_id,
         })
         .collect();
@@ -475,12 +453,13 @@ pub async fn update_dm_message(
 
     state
         .ps_interface
-        .insert(&insert_objs, true)
+        .insert_many(&insert_objs, true)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    let delete_query = sqlx::query!("DELETE FROM dm_message_objects WHERE message_id = $1 AND object_id = ANY($2);",
-        messages.id,
+    let delete_query = sqlx::query!(
+        "DELETE FROM dm_message_objects WHERE message_id = $1 AND object_id = ANY($2);",
+        message.id,
         delete_objs.as_slice()
     );
 
@@ -488,7 +467,7 @@ pub async fn update_dm_message(
         .ps_interface
         .generic_exec(delete_query)
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
     return Ok(Res {
         status: StatusCode::OK,
@@ -514,16 +493,13 @@ pub async fn update_channel(
 
     let channel: Channel = state
         .ps_interface
-        .select(Some((&["id"], &[channel_id])), None)
+        .select_one((&["id"], &[channel_id]))
         .await
-        .map_err(|e| GenericErr::Internal(e))?
-        .into_iter()
-        .next()
-        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
     state
         .ps_interface
-        .update(Channel {
+        .update_one(Channel {
             id: channel.id,
             guild_id: guild_id,
             name: data.name,

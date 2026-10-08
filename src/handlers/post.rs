@@ -57,40 +57,37 @@ pub async fn add_guild(
 ) -> Result<Res<()>, InternalError> {
     let guild = state
         .ps_interface
-        .insert(
-            &[Guild {
+        .insert_one(
+            Guild {
                 id: PLACE_HOLDER_UUID,
                 name: data.name,
                 gp: data.gp,
-            }],
+            },
             false,
         )
-        .await?
-        .into_iter()
-        .next()
-        .expect("at this point the vector must have at least 1 element");
+        .await?;
 
     let member = state
         .ps_interface
-        .insert::<Guild_Member>(
-            &[Guild_Member {
+        .insert_one(
+            Guild_Member {
                 guild_id: guild.id,
                 member_id: auth.user_id,
                 rank: RankT::Owner,
-            }],
+            },
             true,
         )
         .await;
 
     let channel = state
         .ps_interface
-        .insert(
-            &[Channel {
+        .insert_one(
+            Channel {
                 id: PLACE_HOLDER_UUID,
                 guild_id: guild.id,
                 name: "main".to_string(),
                 category: ChannelT::Text,
-            }],
+            },
             false,
         )
         .await;
@@ -98,7 +95,7 @@ pub async fn add_guild(
     if member.is_err() || channel.is_err() {
         state
             .ps_interface
-            .delete::<Uuid, Guild>(&[guild.id])
+            .delete_many::<Uuid, Guild>(&[guild.id])
             .await?;
         return Err(InternalError::DbError);
     }
@@ -118,38 +115,35 @@ pub async fn add_dm(
 ) -> Result<Res<()>, InternalError> {
     state
         .ps_interface
-        .select::<Uuid, User>(Some((&["id"], &[member_id])), None)
+        .select_one::<Uuid, User>((&["id"], &[member_id]))
         .await?;
 
-    let dm = state
+    let dm: Dm = state
         .ps_interface
-        .insert::<Dm>(
-            &[Dm {
+        .insert_one(
+            Dm {
                 id: PLACE_HOLDER_UUID,
                 user_a: Some(auth.user_id),
                 user_b: None,
-            }],
+            },
             false,
         )
-        .await?
-        .into_iter()
-        .next()
-        .expect("at this point the vector must have at least 1 element");
+        .await?;
 
     let invite = state
         .ps_interface
-        .insert(
-            &[Dm_Invite {
+        .insert_one(
+            Dm_Invite {
                 id: PLACE_HOLDER_UUID,
                 dm_id: dm.id,
                 recipient: member_id,
-            }],
+            },
             false,
         )
         .await;
 
     if invite.is_err() {
-        state.ps_interface.delete::<Uuid, Dm>(&[dm.id]).await?;
+        state.ps_interface.delete_many::<Uuid, Dm>(&[dm.id]).await?;
         return Err(InternalError::DbError);
     }
 
@@ -170,29 +164,20 @@ pub async fn add_dm_message(
     if data.file_ids.is_empty() && data.message.is_none() {
         return Err(InternalError::EmptyMessage);
     }
-    let dm: Dm = state
-        .ps_interface
-        .select(Some((&["id"], &[dm_id])), None)
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
+    let dm: Dm = state.ps_interface.select_one((&["id"], &[dm_id])).await?;
 
     let msg: Dm_Message = state
         .ps_interface
-        .insert(
-            &[Dm_Message {
+        .insert_one(
+            Dm_Message {
                 id: 0,
                 dm_id: dm.id,
                 message: data.message,
                 user_id: Some(auth.user_id),
-            }],
+            },
             false,
         )
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
+        .await?;
 
     let msg_objs: Vec<Dm_Message_Object> = data
         .file_ids
@@ -203,12 +188,12 @@ pub async fn add_dm_message(
         })
         .collect();
 
-    let msg_objs_insert = state.ps_interface.insert(&msg_objs, true).await;
+    let msg_objs_insert = state.ps_interface.insert_many(&msg_objs, true).await;
 
     if msg_objs_insert.is_err() {
         state
             .ps_interface
-            .delete::<i64, Dm_Message>(&[msg.id])
+            .delete_many::<i64, Dm_Message>(&[msg.id])
             .await?;
 
         return Err(InternalError::DbError);
@@ -222,7 +207,7 @@ pub async fn add_dm_message(
     });
 }
 
-pub async fn add_guild_message(
+pub async fn add_guild_channel_message(
     auth: AuthUser,
     State(state): State<AppState>,
     Path((guild_id, channel_id)): Path<(Uuid, Uuid)>,
@@ -236,27 +221,21 @@ pub async fn add_guild_message(
 
     state
         .ps_interface
-        .select::<Uuid, Channel>(Some((&["id"], &[channel_id])), Some(1))
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
+        .select_one::<Uuid, Channel>((&["id"], &[channel_id]))
+        .await?;
 
     let msg = state
         .ps_interface
-        .insert(
-            &[Guild_Message {
+        .insert_one(
+            Guild_Message {
                 id: 0,
                 message: data.message,
                 channel_id: channel_id,
                 user_id: Some(auth.user_id),
-            }],
+            },
             false,
         )
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(InternalError::NoMatches)?;
+        .await?;
 
     let msg_objs: Vec<Guild_Message_Object> = data
         .file_ids
@@ -267,12 +246,12 @@ pub async fn add_guild_message(
         })
         .collect();
 
-    let msg_objs_insert = state.ps_interface.insert(&msg_objs, true).await;
+    let msg_objs_insert = state.ps_interface.insert_many(&msg_objs, true).await;
 
     if msg_objs_insert.is_err() {
         state
             .ps_interface
-            .delete::<i64, Guild_Message>(&[msg.id])
+            .delete_many::<i64, Guild_Message>(&[msg.id])
             .await?;
 
         return Err(InternalError::DbError);
@@ -296,16 +275,13 @@ pub async fn invite_guild_member(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let invs: Vec<Guild_Invite> = state
+    let invite = state
         .ps_interface
-        .select(
-            Some((&["guild_id", "user_id"], &[guild_id, data.user_id])),
-            None,
-        )
+        .select_one::<Uuid, Guild_Invite>((&["guild_id", "user_id"], &[guild_id, data.user_id]))
         .await
-        .map_err(|e| GenericErr::Internal(e))?;
+        .map_err(|e| GenericErr::Internal(e));
 
-    if invs.first().is_some() {
+    if invite.is_ok() {
         return Err(GenericErr::Internal(InternalError::DuplicateData));
     }
 
@@ -313,9 +289,9 @@ pub async fn invite_guild_member(
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    let usr: Vec<User> = state
+    state
         .ps_interface
-        .select(Some((&["id"], &[data.user_id])), None)
+        .select_one::<Uuid, User>((&["id"], &[data.user_id]))
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
@@ -323,20 +299,17 @@ pub async fn invite_guild_member(
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
-    if usr.is_empty() {
-        return Err(GenericErr::Internal(InternalError::NoMatches));
-    }
-
-    let inv = Guild_Invite {
-        id: PLACE_HOLDER_UUID,
-        guild_id: guild_id,
-        recipient: data.user_id,
-        rank: data.rank,
-    };
-
     state
         .ps_interface
-        .insert(&[inv], true)
+        .insert_one(
+            Guild_Invite {
+                id: PLACE_HOLDER_UUID,
+                guild_id: guild_id,
+                recipient: data.user_id,
+                rank: data.rank,
+            },
+            true,
+        )
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
@@ -357,27 +330,21 @@ pub async fn create_friend_invite(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let user: Vec<User> = state
+    state
         .ps_interface
-        .select(Some((&["id"], &[user_id])), None)
+        .select_one::<Uuid, User>((&["id"], &[user_id]))
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    if user.first().is_none() {
-        return Err(GenericErr::Internal(InternalError::NoMatches));
-    }
-
-    let invs: Vec<Relation> = state
+    let relation_opt: Option<Relation> = state
         .ps_interface
-        .select(
-            Some((&["relating_user", "related_user"], &[auth.user_id, user_id])),
-            None,
-        )
+        .select_one((&["relating_user", "related_user"], &[auth.user_id, user_id]))
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))
+        .ok();
 
-    if let Some(inv) = invs.first() {
-        match inv.state {
+    if let Some(relation) = relation_opt {
+        match relation.state {
             RelationT::Blocked => {
                 return Err(GenericErr::Auth(AuthError::UserUnreachable));
             }
@@ -389,12 +356,12 @@ pub async fn create_friend_invite(
 
     state
         .ps_interface
-        .insert::<Relation>(
-            &[Relation {
+        .insert_one(
+            Relation {
                 relating_user: auth.user_id,
                 related_user: user_id,
                 state: RelationT::Pending,
-            }],
+            },
             true,
         )
         .await
@@ -413,17 +380,13 @@ pub async fn create_invite(
     State(state): State<AppState>,
     Json(data): Json<PrivLevel>,
 ) -> Result<Res<InvJwt>, GenericErr> {
-    let user: Vec<User> = state
+    let user: User = state
         .ps_interface
-        .select(Some((&["id"], &vec![auth.user_id])), None)
+        .select_one((&["id"], &vec![auth.user_id]))
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    let usr = user
-        .first()
-        .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
-
-    if usr.prv != PrivilegeT::Proprietor {
+    if user.prv != PrivilegeT::Proprietor {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
@@ -457,13 +420,13 @@ pub async fn add_guild_channel(
 
     state
         .ps_interface
-        .insert(
-            &[Channel {
+        .insert_one(
+            Channel {
                 id: PLACE_HOLDER_UUID,
                 guild_id: guild_id,
                 name: data.name,
                 category: data.category,
-            }],
+            },
             false,
         )
         .await
@@ -537,11 +500,12 @@ pub async fn upload(
 
         let hash = hex::encode(hasher.finalize());
 
-        let matches: Vec<Object> = state
+        let matches: Option<Object> = state
             .ps_interface
-            .select::<&str, Object>(Some((&["hash"], &[&hash])), None)
+            .select_one::<&str, Object>((&["hash"], &[&hash]))
             .await
-            .map_err(|_| cleanup_err(temp_path.clone(), InternalError::DbError))?;
+            .map_err(|_| cleanup_err(temp_path.clone(), InternalError::DbError))
+            .ok();
 
         /* ===== CONSUME TEMP FILE ===== */
         let mime = if let Some(typ) = infer::get(
@@ -555,7 +519,7 @@ pub async fn upload(
         };
 
         let mut size: i64 = 0;
-        let new_obj_path = if let Some(frst) = matches.first() {
+        let new_obj_path = if let Some(frst) = &matches {
             tokio::spawn(tokio::fs::remove_file(temp_path.clone()));
             frst.rel_path.clone()
         } else {
@@ -588,21 +552,18 @@ pub async fn upload(
             creation_timestamp: OffsetDateTime::now_utc().unix_timestamp() as i64,
         };
 
-        let obj = state
+        let obj: Object = state
             .ps_interface
-            .insert::<Object>(&[new_obj], false)
+            .insert_one(new_obj, false)
             .await
             .map_err(|_| {
-                if matches.first().is_none() {
+                if matches.is_none() {
                     tokio::spawn(tokio::fs::remove_file(
                         OBJ_PTH_STR.to_string() + &new_obj_path,
                     ));
                 }
                 InternalError::DbError
-            })?
-            .into_iter()
-            .next()
-            .ok_or(InternalError::DbError)?;
+            })?;
 
         objs.ids.push(obj.id);
     }
