@@ -61,7 +61,11 @@ impl IntoResponse for AuthError {
             ),
             AuthError::NonOwner => (
                 StatusCode::FORBIDDEN,
-                "the associated data is owned by a different user",
+                "the associated data or state is owned by a different user",
+            ),
+            AuthError::Blocked => (
+                StatusCode::FORBIDDEN,
+                "the user you are trying to reach blocked you ",
             ),
         };
 

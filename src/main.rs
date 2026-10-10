@@ -137,20 +137,20 @@ async fn main() {
     let dm: Router<AppState> = Router::new()
         .route("/member/{member_id}", post(add_dm))
         .route("/inital", get(get_inital_dms))
-        .route("/{cursor}", get(get_dms_from))
+        .route("/page/{cursor}", get(get_dms_from))
         .route("/invite/inital", get(get_inital_dm_invites))
-        .route("/invite/{cursor}", get(get_dm_invites_from))
+        .route("/invite/page/{cursor}", get(get_dm_invites_from))
         .route("/invite/{invite_id}", patch(manage_dm_invite))
         .route("/{dm_id}/message", post(add_dm_message))
         .route("/{dm_id}/message/{message_id}", patch(update_dm_message))
         .route("/{dm_id}/message/{message_id}", delete(delete_dm_message))
         .route("/{dm_id}/message/inital", get(get_inital_dm_messages))
-        .route("/{dm_id}/message/{cursor}", get(get_dm_messages_from))
+        .route("/{dm_id}/message/page/{cursor}", get(get_dm_messages_from))
         .route("/{dm_id}", delete(delete_dm));
 
     let channel: Router<AppState> = Router::new()
         .route("/inital", get(get_inital_channels))
-        .route("/{cursor}", get(get_channels_from))
+        .route("/page/{cursor}", get(get_channels_from))
         .route("/{channel_id}/message", post(add_guild_channel_message))
         .route(
             "/{channel_id}/message/{message_id}",
@@ -165,7 +165,7 @@ async fn main() {
             get(get_inital_channel_messages),
         )
         .route(
-            "/{channel_id}/message/{cursor}",
+            "/{channel_id}/message/page/{cursor}",
             get(get_channel_messages_from),
         )
         .route("/", post(add_guild_channel))
@@ -175,11 +175,11 @@ async fn main() {
     let guild: Router<AppState> = Router::new()
         .route("/", post(add_guild))
         .route("/inital", get(get_inital_guilds))
-        .route("/{cursor}", get(get_guilds_from))
+        .route("/page/{cursor}", get(get_guilds_from))
         .route("/invite/inital", get(get_inital_guild_invites))
-        .route("/invite/{cursor}", get(get_guild_invites_from))
+        .route("/invite/page/{cursor}", get(get_guild_invites_from))
         .route("/{guild_id}/member/inital", get(get_inital_guild_members))
-        .route("/{guild_id}/member/{cursor}", get(get_guild_members_from))
+        .route("/{guild_id}/member/page/{cursor}", get(get_guild_members_from))
         .route("/invite/{invite_id}", patch(manage_guild_invite))
         .route("/{guild_id}/invite", post(invite_guild_member))
         .route("/{guild_id}", delete(delete_guild))
@@ -192,12 +192,12 @@ async fn main() {
 
     let relations: Router<AppState> = Router::new()
         .route("/friend/inital", get(get_inital_friends))
-        .route("/friend/{cursor}", get(get_friends_from))
+        .route("/friend/page/{cursor}", get(get_friends_from))
         .route("/invite/inital", get(get_inital_friend_invites))
-        .route("/invite/{cursor}", get(get_friend_invites_from))
+        .route("/invite/page/{cursor}", get(get_friend_invites_from))
         .route("/{user_id}/invite", post(create_friend_invite))
         .route("/invite/{user_id}", patch(manage_friend_invite))
-        .route("/{user_id}", patch(update_relation))
+        .route("/toggle/{user_id}/block", patch(update_relation))
         .route("/{user_id}", delete(delete_relation));
 
     let users: Router<AppState> = Router::new()
@@ -239,7 +239,7 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
         .await
-        .expect("port 8000 is required to be free");
+        .expect("port 8080 is required to be free");
 
     axum::serve(listener, interface)
         .await

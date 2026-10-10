@@ -122,7 +122,7 @@ pub async fn delete_guild_member(
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    if recipient.rank >= caller.rank {
+    if caller.member_id != recipient.member_id && recipient.rank >= caller.rank {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
@@ -153,22 +153,13 @@ pub async fn delete_relation(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let (caller_to_user, user_to_caller) = (
-        state
+    let caller_to_user = state
             .ps_interface
             .delete_many::<Uuid, Relation>(&[auth.user_id, user_id])
             .await
-            .map_err(|_| GenericErr::Internal(InternalError::DbError))
-            .ok(),
-        state
-            .ps_interface
-            .delete_many::<Uuid, Relation>(&[user_id, auth.user_id])
-            .await
-            .map_err(|_| GenericErr::Internal(InternalError::DbError))
-            .ok(),
-    );
+            .map_err(|e| GenericErr::Internal(e))?;
 
-    if caller_to_user.is_none() && user_to_caller.is_none() {
+    if caller_to_user.is_empty() {
         return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 
@@ -249,7 +240,7 @@ pub async fn delete_guild_channel_message(
         guild_id
     );
 
-    state
+    let message = state
         .ps_interface
         .generic_fetch(messages_query)
         .await
@@ -258,7 +249,12 @@ pub async fn delete_guild_channel_message(
         .next()
         .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
-    if member.rank == RankT::User {
+    if let Some(user) = message.user_id && 
+    (user != auth.user_id &&
+        state.ps_interface
+        .select_one::<Uuid, Guild_Member>((&["guild_id", "member_id"],&[guild_id, user]))
+        .await.map_err(|e| GenericErr::Internal(e))?.rank >= member.rank
+    ) {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 

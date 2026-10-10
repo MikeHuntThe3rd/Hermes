@@ -112,12 +112,59 @@ pub async fn add_dm(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(member_id): Path<Uuid>,
-) -> Result<Res<()>, InternalError> {
-    //TODO: add duplicate check
+) -> Result<Res<()>, GenericErr> {
+    if auth.user_id == member_id {
+        return Err(GenericErr::Auth(AuthError::SelfInvite));
+    }
+
     state
         .ps_interface
         .select_one::<Uuid, User>((&["id"], &[member_id]))
-        .await?;
+        .await.map_err(|e| GenericErr::Internal(e))?;
+
+    let existing_dm_query = sqlx::query_as!(Dm, 
+        r#"SELECT * FROM dms 
+        WHERE (dms.user_a, dms.user_b) = ($1, $2) OR (dms.user_a, dms.user_b) = ($2, $1)
+        LIMIT 1"#,
+        auth.user_id,
+        member_id
+    );
+
+    let existing_invite_query = sqlx::query_as!(Dm_Invite, 
+        r#"SELECT i.* FROM dm_invites i JOIN dms d ON d.id = i.dm_id
+        WHERE i.recipient = $1 AND (d.user_a = $2 OR d.user_b = $2) LIMIT 1"#,
+        member_id,
+        auth.user_id
+    );
+
+    let existing_invite = state.ps_interface.generic_fetch(existing_invite_query)
+    .await.map_err(|e| GenericErr::Internal(e))?;
+
+    let existing_dm = state.ps_interface.generic_fetch(existing_dm_query)
+    .await.map_err(|e| GenericErr::Internal(e))?;
+
+    if !existing_dm.is_empty() || !existing_invite.is_empty() {
+        return Err(GenericErr::Internal(InternalError::DuplicateData));
+    }
+
+    let relation = state.ps_interface
+    .select_one::<Uuid, Relation>((&["relating_user", "related_user"],&[member_id, auth.user_id])).await;
+
+    match relation {
+        Ok(rel_ok) => {
+            if rel_ok.state == RelationT::Blocked {
+                return Err(GenericErr::Auth(AuthError::Blocked));
+            }
+        }
+        Err(rel_err) => {
+            match rel_err {
+                InternalError::NoMatches => {}
+                _ => {
+                    return Err(GenericErr::Internal(rel_err));
+                }
+            }
+        }
+    }
 
     let dm: Dm = state
         .ps_interface
@@ -129,7 +176,7 @@ pub async fn add_dm(
             },
             false,
         )
-        .await?;
+        .await.map_err(|e| GenericErr::Internal(e))?;
 
     let invite = state
         .ps_interface
@@ -144,8 +191,9 @@ pub async fn add_dm(
         .await;
 
     if invite.is_err() {
-        state.ps_interface.delete_many::<Uuid, Dm>(&[dm.id]).await?;
-        return Err(InternalError::DbError);
+        state.ps_interface.delete_many::<Uuid, Dm>(&[dm.id])
+        .await.map_err(|e| GenericErr::Internal(e))?;
+        return Err(GenericErr::Internal(InternalError::DbError));
     }
 
     return Ok(Res {
@@ -287,13 +335,37 @@ pub async fn invite_guild_member(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let member = fetch_guild_member(state.clone(), &guild_id, &data.user_id)
+    let caller = fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
+
+    let recipient = fetch_guild_member(state.clone(), &guild_id, &data.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))
         .ok();
+    
 
-    if member.is_some() {
+    if recipient.is_some() {
         return Err(GenericErr::Internal(InternalError::DuplicateData));
+    }
+
+    let relation = state.ps_interface
+    .select_one::<Uuid, Relation>((&["relating_user", "related_user"],&[data.user_id, auth.user_id])).await;
+
+    match relation {
+        Ok(rel_ok) => {
+            if rel_ok.state == RelationT::Blocked {
+                return Err(GenericErr::Auth(AuthError::Blocked));
+            }
+        }
+        Err(rel_err) => {
+            match rel_err {
+                InternalError::NoMatches => {}
+                _ => {
+                    return Err(GenericErr::Internal(rel_err));
+                }
+            }
+        }
     }
 
     let invite = state
@@ -306,17 +378,13 @@ pub async fn invite_guild_member(
         return Err(GenericErr::Internal(InternalError::DuplicateData));
     }
 
-    let member = fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
-        .await
-        .map_err(|e| GenericErr::Internal(e))?;
-
     state
         .ps_interface
         .select_one::<Uuid, User>((&["id"], &[data.user_id]))
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    if member.rank < data.rank {
+    if caller.rank < data.rank {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 
@@ -357,14 +425,30 @@ pub async fn create_friend_invite(
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
-    let relation_opt: Option<Relation> = state
+    let peer_to_caller_relation: Vec<Relation> = state
         .ps_interface
-        .select_one((&["relating_user", "related_user"], &[user_id, auth.user_id]))
+        .select_many(Some((&["relating_user", "related_user"], &[user_id, auth.user_id])), Some(1))
         .await
-        .map_err(|e| GenericErr::Internal(e))
-        .ok();
+        .map_err(|e| GenericErr::Internal(e))?;
+    
+    let caller_to_peer_relation: Vec<Relation> = state
+        .ps_interface
+        .select_many(Some((&["relating_user", "related_user"], &[ auth.user_id, user_id])), Some(1))
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
-    if let Some(relation) = relation_opt {
+    if let Some(relation) = peer_to_caller_relation.into_iter().next() {
+        match relation.state {
+            RelationT::Blocked => {
+                return Err(GenericErr::Auth(AuthError::UserUnreachable));
+            }
+            _ => {
+                return Err(GenericErr::Internal(InternalError::DuplicateData));
+            }
+        }
+    }
+
+    if let Some(relation) = caller_to_peer_relation.into_iter().next() {
         match relation.state {
             RelationT::Blocked => {
                 return Err(GenericErr::Auth(AuthError::UserUnreachable));
@@ -470,6 +554,7 @@ pub async fn upload(
         if let Some(rm_path) = rm {
             tokio::spawn(tokio::fs::remove_file(rm_path));
         }
+
         return match status {
             StatusCode::BAD_REQUEST => InternalError::BadRequest,
             StatusCode::PAYLOAD_TOO_LARGE => InternalError::BodyTooLarge,
@@ -530,25 +615,22 @@ pub async fn upload(
             .next();
 
         /* ===== CONSUME TEMP FILE ===== */
-        let mime = if let Some(typ) = infer::get(
-            &tokio::fs::read(&temp_path)
-                .await
-                .map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?,
-        ) {
+        let mime = if let Some(typ) = infer::get_from_path(&temp_path)
+            .map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?
+        {
             typ
         } else {
             return Err(cleanup_err(temp_path.clone(), InternalError::UnknownType));
         };
 
-        let mut size: i64 = 0;
-        let new_obj_path = if let Some(frst) = &matches {
+        let (new_obj_path, size) = if let Some(dupe) = &matches {
             tokio::spawn(tokio::fs::remove_file(temp_path.clone()));
-            frst.rel_path.clone()
+            (dupe.rel_path.clone(), dupe.size_bytes)
         } else {
-            size = temp_file
+            let size = temp_file
                 .metadata()
                 .await
-                .map_err(|_| InternalError::OperationsError)?
+                .map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?
                 .len() as i64;
 
             let dir_path = OBJ_PTH_STR.to_string() + &hash;
@@ -562,14 +644,14 @@ pub async fn upload(
                 .await
                 .map_err(|_| cleanup_err(temp_path.clone(), InternalError::OperationsError))?;
 
-            hash.clone() + "/" + &uuid_name
+            (hash.clone() + "/" + &uuid_name, size)
         };
 
         let new_obj = Object {
             id: PLACE_HOLDER_UUID,
             hash: hash,
             rel_path: new_obj_path.clone(),
-            mime_type: mime.to_string(),
+            mime_type: mime.mime_type().to_string(),
             size_bytes: size,
             creation_timestamp: OffsetDateTime::now_utc().unix_timestamp() as i64,
         };

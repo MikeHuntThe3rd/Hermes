@@ -18,11 +18,6 @@ pub struct InvMng {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct StatChange {
-    pub state: RelationT,
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct ChannelUpdate {
     pub name: String,
 }
@@ -113,7 +108,6 @@ pub async fn update_relation(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
-    Json(data): Json<StatChange>,
 ) -> Result<Res<()>, GenericErr> {
     if auth.user_id == user_id {
         return Err(GenericErr::Auth(AuthError::SelfInvite));
@@ -125,7 +119,13 @@ pub async fn update_relation(
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    rel.state = data.state;
+    match rel.state {
+        RelationT::Blocked => rel.state = RelationT::Friends,
+        RelationT::Friends => rel.state = RelationT::Blocked,
+        RelationT::Pending => {
+            return Err(GenericErr::Auth(AuthError::NonOwner));
+        }
+    }
 
     state
         .ps_interface
@@ -243,9 +243,7 @@ pub async fn manage_friend_invite(
 ) -> Result<Res<()>, InternalError> {
     let mut inv: Relation = state
         .ps_interface
-        .select_one((&["relating_user", "related_user"], &[user_id, auth.user_id]))
-        .await
-        .map_err(|_| InternalError::DbError)?;
+        .select_one((&["relating_user", "related_user"], &[user_id, auth.user_id])).await?;
 
     if inv.state != RelationT::Pending {
         return Err(InternalError::NoMatches);
@@ -292,15 +290,22 @@ pub async fn update_guild_channel_message(
     Path((guild_id, channel_id, message_id)): Path<(Uuid, Uuid, i64)>,
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, GenericErr> {
+    if data.message.is_none() && data.file_ids.is_empty() {
+        return Err(GenericErr::Internal(InternalError::EmptyMessage));
+    }
+
     fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
+
+    let channel: Channel = state.ps_interface.select_one((&["id", "guild_id"], &[channel_id, guild_id]))
+    .await.map_err(|e| GenericErr::Internal(e))?;
 
     let messages_query = sqlx::query_as!(
         Guild_Message,
         "SELECT * FROM guild_messages WHERE guild_messages.id = $1 AND guild_messages.channel_id = $2 LIMIT 1",
         message_id,
-        channel_id
+        &channel.id
     );
 
     let messages: Guild_Message = state
@@ -387,6 +392,10 @@ pub async fn update_dm_message(
     Path((dm_id, message_id)): Path<(Uuid, i64)>,
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, GenericErr> {
+     if data.message.is_none() && data.file_ids.is_empty() {
+        return Err(GenericErr::Internal(InternalError::EmptyMessage));
+    }
+    
     state
         .ps_interface
         .select_one::<Uuid, Dm>((&["id"], &[dm_id]))

@@ -10,6 +10,7 @@ pub enum AuthError {
     SelfInvite,
     UserUnreachable,
     NonOwner,
+    Blocked,
 }
 
 #[derive(Debug)]

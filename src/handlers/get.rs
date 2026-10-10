@@ -119,19 +119,19 @@ pub async fn get_dms_from(
 }
 
 pub async fn get_inital_channels(
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(group_id): Path<Uuid>,
     State(state): State<AppState>,
 ) -> Result<Res<ChannelsResponse>, InternalError> {
-    return get_channels(group_id, None, state).await;
+    return get_channels(auth.user_id, group_id, None, state).await;
 }
 
 pub async fn get_channels_from(
-    _auth: AuthUser,
+    auth: AuthUser,
     Path((group_id, cursor)): Path<(Uuid, Uuid)>,
     State(state): State<AppState>,
 ) -> Result<Res<ChannelsResponse>, InternalError> {
-    return get_channels(group_id, Some(cursor), state).await;
+    return get_channels(auth.user_id, group_id, Some(cursor), state).await;
 }
 
 pub async fn get_inital_guilds(
@@ -165,19 +165,19 @@ pub async fn get_guild_invites_from(
 }
 
 pub async fn get_inital_guild_members(
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(group_id): Path<Uuid>,
     State(state): State<AppState>,
 ) -> Result<Res<GuildMembersResponse>, InternalError> {
-    return get_guild_members(group_id, None, state).await;
+    return get_guild_members(auth.user_id, group_id, None, state).await;
 }
 
 pub async fn get_guild_members_from(
-    _auth: AuthUser,
+    auth: AuthUser,
     Path((group_id, cursor)): Path<(Uuid, Uuid)>,
     State(state): State<AppState>,
 ) -> Result<Res<GuildMembersResponse>, InternalError> {
-    return get_guild_members(group_id, Some(cursor), state).await;
+    return get_guild_members(auth.user_id, group_id, Some(cursor), state).await;
 }
 
 pub async fn get_inital_friend_invites(
@@ -294,7 +294,7 @@ async fn get_dms(
         state.ps_interface.generic_fetch(query).await?
     };
 
-    if dms.is_empty() {
+    if dms.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
@@ -351,7 +351,7 @@ async fn get_friends(
         state.ps_interface.generic_fetch(query).await?
     };
 
-    if friends.is_empty() {
+    if friends.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
@@ -364,7 +364,7 @@ async fn get_friends(
     };
 
     return Ok(Res {
-        status: StatusCode::FOUND,
+        status: StatusCode::OK,
         success: true,
         msg: String::new(),
         data: Some(RelationsResponse {
@@ -417,7 +417,7 @@ async fn get_guilds(
         state.ps_interface.generic_fetch(query).await?
     };
 
-    if guilds.is_empty() {
+    if guilds.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
@@ -430,7 +430,7 @@ async fn get_guilds(
     };
 
     return Ok(Res {
-        status: StatusCode::FOUND,
+        status: StatusCode::OK,
         success: true,
         msg: String::new(),
         data: Some(GuildsResponse {
@@ -441,10 +441,13 @@ async fn get_guilds(
 }
 
 async fn get_channels(
+    user_id: Uuid,
     guild_id: Uuid,
     cursor: Option<Uuid>,
     state: AppState,
 ) -> Result<Res<ChannelsResponse>, InternalError> {
+    fetch_guild_member(state.clone(), &guild_id, &user_id).await?;
+
     let channels: Vec<StrippedChannel> = if let Some(pin) = cursor {
         let query = sqlx::query_as!(
             StrippedChannel,
@@ -466,7 +469,7 @@ async fn get_channels(
         state.ps_interface.generic_fetch(query).await?
     };
 
-    if channels.is_empty() {
+    if channels.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
@@ -490,6 +493,7 @@ async fn get_channels(
 }
 
 async fn get_guild_members(
+    user_id: Uuid,
     guild_id: Uuid,
     cursor: Option<Uuid>,
     state: AppState,
@@ -498,6 +502,8 @@ async fn get_guild_members(
         .ps_interface
         .select_one::<Uuid, Guild>((&["id"], &[guild_id]))
         .await?;
+
+    fetch_guild_member(state.clone(), &guild_id, &user_id).await?;
 
     let members: Vec<StrippedMember> = if let Some(pin) = cursor {
         let query = sqlx::query_as!(
@@ -528,7 +534,7 @@ async fn get_guild_members(
         state.ps_interface.generic_fetch(query).await?
     };
 
-    if members.is_empty() {
+    if members.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
@@ -559,6 +565,7 @@ async fn get_guild_channel_messages(
     state: AppState,
 ) -> Result<Res<GuildMsgResponse>, InternalError> {
     fetch_guild_member(state.clone(), &guild_id, &user_id).await?;
+    state.ps_interface.select_one::<Uuid, Channel>((&["id","guild_id"], &[channel_id, guild_id])).await?;
 
     let messages: Vec<GuildChannelMessage> = if let Some(pin) = cursor {
         let messages_query = sqlx::query_as!(
@@ -574,7 +581,7 @@ async fn get_guild_channel_messages(
             LEFT JOIN guild_message_objects ON guild_message_objects.message_id = guild_messages.id
             WHERE guild_messages.channel_id = $1 AND $2 > guild_messages.id
             GROUP BY guild_messages.id
-            ORDER BY guild_messages.id ASC
+            ORDER BY guild_messages.id DESC
             LIMIT 50;"#,
             channel_id,
             pin
@@ -595,7 +602,7 @@ async fn get_guild_channel_messages(
             LEFT JOIN guild_message_objects ON guild_message_objects.message_id = guild_messages.id
             WHERE guild_messages.channel_id = $1
             GROUP BY guild_messages.id
-            ORDER BY guild_messages.id ASC
+            ORDER BY guild_messages.id DESC
             LIMIT 50;"#,
             channel_id
         );
@@ -603,7 +610,7 @@ async fn get_guild_channel_messages(
         state.ps_interface.generic_fetch(messages_query).await?
     };
 
-    if messages.is_empty() {
+    if messages.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
@@ -616,7 +623,7 @@ async fn get_guild_channel_messages(
     };
 
     return Ok(Res {
-        status: StatusCode::FOUND,
+        status: StatusCode::OK,
         success: true,
         msg: String::new(),
         data: Some(GuildMsgResponse {
@@ -653,15 +660,15 @@ async fn get_dm_messages(
             r#"SELECT 
                 dm_messages.id AS id, 
                 dm_messages.message AS message,
-                COALESCE(array_agg(guild_message_objects.object_id) 
-                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS "file_ids!", 
+                COALESCE(array_agg(dm_message_objects.object_id) 
+                FILTER (WHERE dm_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS "file_ids!", 
                 dm_messages.dm_id AS dm_id,
                 dm_messages.user_id AS user_id 
             FROM dm_messages 
-            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = dm_messages.id
+            LEFT JOIN dm_message_objects ON dm_message_objects.message_id = dm_messages.id
             WHERE dm_messages.dm_id = $1 AND $2 > dm_messages.id
             GROUP BY dm_messages.id
-            ORDER BY dm_messages.id ASC
+            ORDER BY dm_messages.id DESC
             LIMIT 50;"#,
             dm_id,
             pin
@@ -674,15 +681,15 @@ async fn get_dm_messages(
             r#"SELECT 
                 dm_messages.id AS id, 
                 dm_messages.message AS message,
-                COALESCE(array_agg(guild_message_objects.object_id) 
-                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS "file_ids!", 
+                COALESCE(array_agg(dm_message_objects.object_id) 
+                FILTER (WHERE dm_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS "file_ids!", 
                 dm_messages.dm_id AS dm_id,
                 dm_messages.user_id AS user_id 
             FROM dm_messages 
-            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = dm_messages.id
+            LEFT JOIN dm_message_objects ON dm_message_objects.message_id = dm_messages.id
             WHERE dm_messages.dm_id = $1
             GROUP BY dm_messages.id
-            ORDER BY dm_messages.id ASC
+            ORDER BY dm_messages.id DESC
             LIMIT 50;"#,
             dm_id
         );
@@ -690,7 +697,7 @@ async fn get_dm_messages(
         state.ps_interface.generic_fetch(messages_query).await?
     };
 
-    if messages.is_empty() {
+    if messages.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
@@ -703,7 +710,7 @@ async fn get_dm_messages(
     };
 
     return Ok(Res {
-        status: StatusCode::FOUND,
+        status: StatusCode::OK,
         success: true,
         msg: String::new(),
         data: Some(DmMsgResponse {
@@ -723,7 +730,7 @@ async fn get_guild_invites(
             Guild_Invite,
             r#"
             SELECT id, guild_id, recipient, rank AS "rank: RankT" FROM 
-            guild_invites WHERE guild_invites.recipient = $2 AND $1 > guild_invites.id  
+            guild_invites WHERE guild_invites.recipient = $1 AND $2 > guild_invites.id  
             ORDER BY guild_invites.id DESC LIMIT 50;"#,
             user_id,
             pin
@@ -743,7 +750,7 @@ async fn get_guild_invites(
         state.ps_interface.generic_fetch(query).await?
     };
 
-    if invites.is_empty() {
+    if invites.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
@@ -756,7 +763,7 @@ async fn get_guild_invites(
     };
 
     return Ok(Res {
-        status: StatusCode::FOUND,
+        status: StatusCode::OK,
         success: true,
         msg: String::new(),
         data: Some(GuildInvitesResponse {
@@ -794,7 +801,7 @@ async fn get_dm_invites(
         state.ps_interface.generic_fetch(query).await?
     };
 
-    if invites.is_empty() {
+    if invites.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
@@ -826,8 +833,10 @@ pub async fn get_friend_invites(
         let query = sqlx::query_as!(
             StrippedUser,
             r#"SELECT users.id AS user_id, nickname, pfp FROM users 
-            JOIN relations ON relations.related_user = users.id 
-            WHERE (relations.state, users.id) = ($1, $2) AND $3 > users.id;"#,
+            JOIN relations rel ON rel.relating_user = users.id 
+            WHERE (rel.state, rel.related_user) = ($1, $2) AND $3 > users.id
+            ORDER BY users.id DESC
+            LIMIT 50;"#,
             RelationT::Pending as RelationT,
             user_id,
             pin
@@ -837,9 +846,11 @@ pub async fn get_friend_invites(
     } else {
         let query = sqlx::query_as!(
             StrippedUser,
-            r#"SELECT users.id AS user_id, nickname, pfp FROM users 
-            JOIN relations ON relations.related_user = users.id 
-            WHERE (relations.state, users.id) = ($1, $2);"#,
+           r#"SELECT users.id AS user_id, nickname, pfp FROM users 
+            JOIN relations rel ON rel.relating_user = users.id 
+            WHERE (rel.state, rel.related_user) = ($1, $2)
+            ORDER BY users.id DESC
+            LIMIT 50;"#,
             RelationT::Pending as RelationT,
             user_id
         );
@@ -847,7 +858,7 @@ pub async fn get_friend_invites(
         state.ps_interface.generic_fetch(query).await?
     };
 
-    if invites.is_empty() {
+    if invites.is_empty() && cursor.is_none() {
         return Err(InternalError::NoMatches);
     }
 
