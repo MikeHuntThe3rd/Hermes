@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT \n                guild_messages.id AS id, \n                guild_messages.message AS message,\n                COALESCE(array_agg(guild_message_objects.object_id) \n                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS \"file_ids!\", \n                guild_messages.channel_id AS channel_id,\n                guild_messages.user_id AS user_id \n            FROM guild_messages \n            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = guild_messages.id\n            WHERE guild_messages.channel_id = $1\n            GROUP BY guild_messages.id\n            ORDER BY guild_messages.id ASC\n            LIMIT 50;",
+  "query": "SELECT \n                dm_messages.id AS id, \n                dm_messages.message AS message,\n                COALESCE(array_agg(dm_message_objects.object_id) \n                FILTER (WHERE dm_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS \"file_ids!\", \n                dm_messages.dm_id AS dm_id,\n                dm_messages.user_id AS user_id \n            FROM dm_messages \n            LEFT JOIN dm_message_objects ON dm_message_objects.message_id = dm_messages.id\n            WHERE dm_messages.dm_id = $1 AND $2 > dm_messages.id\n            GROUP BY dm_messages.id\n            ORDER BY dm_messages.id DESC\n            LIMIT 50;",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Int8",
         "origin": {
           "Table": {
-            "table": "guild_messages",
+            "table": "dm_messages",
             "name": "id"
           }
         }
@@ -20,7 +20,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "guild_messages",
+            "table": "dm_messages",
             "name": "message"
           }
         }
@@ -33,12 +33,12 @@
       },
       {
         "ordinal": 3,
-        "name": "channel_id",
+        "name": "dm_id",
         "type_info": "Uuid",
         "origin": {
           "Table": {
-            "table": "guild_messages",
-            "name": "channel_id"
+            "table": "dm_messages",
+            "name": "dm_id"
           }
         }
       },
@@ -48,7 +48,7 @@
         "type_info": "Uuid",
         "origin": {
           "Table": {
-            "table": "guild_messages",
+            "table": "dm_messages",
             "name": "user_id"
           }
         }
@@ -56,7 +56,8 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "Int8"
       ]
     },
     "nullable": [
@@ -67,5 +68,5 @@
       true
     ]
   },
-  "hash": "a74b63557fa0526968e494bcecfab86555aa67eea0004f7757386ced190dbf76"
+  "hash": "6b250b0ff4208ac37dd7e14f7e1e19456e253a4ed78e29567d23f75268d97139"
 }

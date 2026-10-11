@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, guild_id, recipient, rank AS \"rank: RankT\" FROM \n            guild_invites WHERE guild_invites.recipient = $2 AND $1 > guild_invites.id  \n            ORDER BY guild_invites.id DESC LIMIT 50;",
+  "query": "\n            SELECT id, guild_id, recipient, rank AS \"rank: RankT\" FROM \n            guild_invites WHERE guild_invites.recipient = $1 AND $2 > guild_invites.id  \n            ORDER BY guild_invites.id DESC LIMIT 50;",
   "describe": {
     "columns": [
       {
@@ -72,5 +72,5 @@
       false
     ]
   },
-  "hash": "2c973eb3dfb9ae3f32a8010b0ee9a5eeec52cb250ecefe588d014b46da415806"
+  "hash": "3b70ef7772157d602b4983903a218ef6bf82d86719324e3a151eed7cd2b4f793"
 }

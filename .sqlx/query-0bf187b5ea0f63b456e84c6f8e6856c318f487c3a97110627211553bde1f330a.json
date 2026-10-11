@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT \n                guild_messages.id AS id, \n                guild_messages.message AS message,\n                COALESCE(array_agg(guild_message_objects.object_id) \n                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS \"file_ids!\", \n                guild_messages.channel_id AS channel_id,\n                guild_messages.user_id AS user_id \n            FROM guild_messages \n            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = guild_messages.id\n            WHERE guild_messages.channel_id = $1 AND $2 > guild_messages.id\n            GROUP BY guild_messages.id\n            ORDER BY guild_messages.id ASC\n            LIMIT 50;",
+  "query": "SELECT \n                guild_messages.id AS id, \n                guild_messages.message AS message,\n                COALESCE(array_agg(guild_message_objects.object_id) \n                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS \"file_ids!\", \n                guild_messages.channel_id AS channel_id,\n                guild_messages.user_id AS user_id \n            FROM guild_messages \n            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = guild_messages.id\n            WHERE guild_messages.channel_id = $1\n            GROUP BY guild_messages.id\n            ORDER BY guild_messages.id DESC\n            LIMIT 50;",
   "describe": {
     "columns": [
       {
@@ -56,8 +56,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -68,5 +67,5 @@
       true
     ]
   },
-  "hash": "f1fe4bb82e41289916d4c5ced0e173fe89a413ee58e3383fe894da8e20bb1822"
+  "hash": "0bf187b5ea0f63b456e84c6f8e6856c318f487c3a97110627211553bde1f330a"
 }

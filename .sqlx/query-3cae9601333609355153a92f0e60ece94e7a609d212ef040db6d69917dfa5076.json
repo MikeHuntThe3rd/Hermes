@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT users.id AS user_id, nickname, pfp FROM users \n            JOIN relations ON relations.related_user = users.id \n            WHERE (relations.state, users.id) = ($1, $2) AND $3 > users.id;",
+  "query": "SELECT users.id AS user_id, nickname, pfp FROM users \n            JOIN relations rel ON rel.relating_user = users.id \n            WHERE (rel.state, rel.related_user) = ($1, $2) AND $3 > users.id\n            ORDER BY users.id DESC\n            LIMIT 50;",
   "describe": {
     "columns": [
       {
@@ -61,5 +61,5 @@
       true
     ]
   },
-  "hash": "ff8ad0cde8e708cda1d26df58cdd917cee541b30223cb24c3cdb194788c401e5"
+  "hash": "3cae9601333609355153a92f0e60ece94e7a609d212ef040db6d69917dfa5076"
 }

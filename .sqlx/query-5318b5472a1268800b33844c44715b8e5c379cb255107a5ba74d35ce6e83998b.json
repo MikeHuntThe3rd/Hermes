@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT \n                dm_messages.id AS id, \n                dm_messages.message AS message,\n                COALESCE(array_agg(guild_message_objects.object_id) \n                FILTER (WHERE guild_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS \"file_ids!\", \n                dm_messages.dm_id AS dm_id,\n                dm_messages.user_id AS user_id \n            FROM dm_messages \n            LEFT JOIN guild_message_objects ON guild_message_objects.message_id = dm_messages.id\n            WHERE dm_messages.dm_id = $1\n            GROUP BY dm_messages.id\n            ORDER BY dm_messages.id ASC\n            LIMIT 50;",
+  "query": "SELECT \n                dm_messages.id AS id, \n                dm_messages.message AS message,\n                COALESCE(array_agg(dm_message_objects.object_id) \n                FILTER (WHERE dm_message_objects.object_id IS NOT NULL), '{}'::uuid[]) AS \"file_ids!\", \n                dm_messages.dm_id AS dm_id,\n                dm_messages.user_id AS user_id \n            FROM dm_messages \n            LEFT JOIN dm_message_objects ON dm_message_objects.message_id = dm_messages.id\n            WHERE dm_messages.dm_id = $1\n            GROUP BY dm_messages.id\n            ORDER BY dm_messages.id DESC\n            LIMIT 50;",
   "describe": {
     "columns": [
       {
@@ -67,5 +67,5 @@
       true
     ]
   },
-  "hash": "886f4ab66a06ed69fc09251e1f912fba5d44e3070b8b71a7d32c0635cb6643ae"
+  "hash": "5318b5472a1268800b33844c44715b8e5c379cb255107a5ba74d35ce6e83998b"
 }
