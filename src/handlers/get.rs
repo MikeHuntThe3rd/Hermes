@@ -88,7 +88,7 @@ pub type RelationsResponse = StrippedUserResponse;
 
 /* ===== Handlers ===== */
 
-pub async fn get_inital_dm_invites(
+pub async fn get_initial_dm_invites(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Res<DmInvitesResponse>, InternalError> {
@@ -103,7 +103,7 @@ pub async fn get_dm_invites_from(
     return get_dm_invites(auth.user_id, Some(cursor), state).await;
 }
 
-pub async fn get_inital_dms(
+pub async fn get_initial_dms(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Res<DmResponse>, InternalError> {
@@ -118,7 +118,7 @@ pub async fn get_dms_from(
     return get_dms(auth.user_id, Some(cursor), state).await;
 }
 
-pub async fn get_inital_channels(
+pub async fn get_initial_channels(
     auth: AuthUser,
     Path(group_id): Path<Uuid>,
     State(state): State<AppState>,
@@ -134,7 +134,7 @@ pub async fn get_channels_from(
     return get_channels(auth.user_id, group_id, Some(cursor), state).await;
 }
 
-pub async fn get_inital_guilds(
+pub async fn get_initial_guilds(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Res<GuildsResponse>, InternalError> {
@@ -149,7 +149,7 @@ pub async fn get_guilds_from(
     return get_guilds(auth.user_id, Some(cursor), state).await;
 }
 
-pub async fn get_inital_guild_invites(
+pub async fn get_initial_guild_invites(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Res<GuildInvitesResponse>, InternalError> {
@@ -164,7 +164,7 @@ pub async fn get_guild_invites_from(
     return get_guild_invites(auth.user_id, Some(cursor), state).await;
 }
 
-pub async fn get_inital_guild_members(
+pub async fn get_initial_guild_members(
     auth: AuthUser,
     Path(group_id): Path<Uuid>,
     State(state): State<AppState>,
@@ -180,7 +180,7 @@ pub async fn get_guild_members_from(
     return get_guild_members(auth.user_id, group_id, Some(cursor), state).await;
 }
 
-pub async fn get_inital_friend_invites(
+pub async fn get_initial_friend_invites(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Res<RelationInvitesResponse>, InternalError> {
@@ -195,7 +195,7 @@ pub async fn get_friend_invites_from(
     return get_friend_invites(auth.user_id, Some(cursor), state).await;
 }
 
-pub async fn get_inital_friends(
+pub async fn get_initial_friends(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Res<RelationsResponse>, InternalError> {
@@ -210,7 +210,7 @@ pub async fn get_friends_from(
     return get_friends(auth.user_id, Some(cursor), state).await;
 }
 
-pub async fn get_inital_dm_messages(
+pub async fn get_initial_dm_messages(
     auth: AuthUser,
     Path(dm_id): Path<Uuid>,
     State(state): State<AppState>,
@@ -226,7 +226,7 @@ pub async fn get_dm_messages_from(
     return get_dm_messages(auth.user_id, dm_id, Some(cursor), state).await;
 }
 
-pub async fn get_inital_channel_messages(
+pub async fn get_initial_channel_messages(
     auth: AuthUser,
     Path((guild_id, channel_id)): Path<(Uuid, Uuid)>,
     State(state): State<AppState>,

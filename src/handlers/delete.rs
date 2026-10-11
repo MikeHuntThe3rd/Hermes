@@ -113,14 +113,30 @@ pub async fn delete_dm(
 pub async fn delete_guild_member(
     auth: AuthUser,
     State(state): State<AppState>,
-    Path((group_id, member_id)): Path<(Uuid, Uuid)>,
+    Path((guild_id, member_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Res<()>, GenericErr> {
-    let caller = fetch_guild_member(state.clone(), &group_id, &auth.user_id)
+    let caller = fetch_guild_member(state.clone(), &guild_id, &auth.user_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
-    let recipient = fetch_guild_member(state.clone(), &group_id, &member_id)
+    let recipient = fetch_guild_member(state.clone(), &guild_id, &member_id)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
+
+    if recipient.rank == RankT::Owner {
+        let orphan_guilds_query = sqlx::query_as!(
+            Guild_Member,
+            r#"SELECT guild_id, member_id, rank AS "rank: RankT" FROM guild_members g WHERE g.guild_id = $1 AND g.rank = $2"#,
+            guild_id,
+            RankT::Owner as RankT
+        );
+
+        let orphan_guilds = state.ps_interface.generic_fetch(orphan_guilds_query)
+        .await.map_err(|e| GenericErr::Internal(e))?;
+
+        if orphan_guilds.len() == 1 {
+            return Err(GenericErr::Internal(InternalError::DetachingOperation));
+        }
+    }
 
     if caller.member_id != recipient.member_id && recipient.rank >= caller.rank {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
@@ -128,7 +144,7 @@ pub async fn delete_guild_member(
 
     let deletes: Vec<Guild_Member> = state
         .ps_interface
-        .delete_many(&vec![group_id, member_id])
+        .delete_many(&vec![guild_id, member_id])
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
 
@@ -153,13 +169,18 @@ pub async fn delete_relation(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let caller_to_user = state
-            .ps_interface
-            .delete_many::<Uuid, Relation>(&[auth.user_id, user_id])
-            .await
-            .map_err(|e| GenericErr::Internal(e))?;
+    let delete_query = sqlx::query_as!(Relation, r#"DELETE FROM relations
+        WHERE (relating_user = $1 AND related_user = $2)
+        OR (relating_user = $2 AND related_user = $1) 
+        RETURNING relating_user, related_user, state AS "state: RelationT";"#,
+        auth.user_id,
+        user_id
+    );
 
-    if caller_to_user.is_empty() {
+    let successful_deletes = state.ps_interface.generic_fetch(delete_query)
+    .await.map_err(|e| GenericErr::Internal(e))?;
+
+    if successful_deletes.is_empty() {
         return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 
@@ -249,12 +270,12 @@ pub async fn delete_guild_channel_message(
         .next()
         .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
-    if let Some(user) = message.user_id && 
-    (user != auth.user_id &&
-        state.ps_interface
-        .select_one::<Uuid, Guild_Member>((&["guild_id", "member_id"],&[guild_id, user]))
-        .await.map_err(|e| GenericErr::Internal(e))?.rank >= member.rank
-    ) {
+    if let Some(user) = message.user_id && user != auth.user_id &&
+        let Some(existing_member) = state.ps_interface
+        .select_many::<Uuid, Guild_Member>(Some((&["guild_id", "member_id"],&[guild_id, user])), Some(1))
+        .await.map_err(|e| GenericErr::Internal(e))?.into_iter().next() &&
+        existing_member.rank >= member.rank
+    {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 

@@ -1,8 +1,21 @@
 openapi: 3.0.3
 info:
   title: Hermes API
-  description: messaging service
-  version: 1.0.0
+  version: 2.0.0
+  description: |
+    Messaging service with guilds (channels), direct messages, friend relations and file objects.
+
+    **Response envelope.** Every JSON response has the shape `{ "success": bool, "msg": string, "data": ... }`.
+    The HTTP status code carries the result; `data` is `null` for operations that return nothing.
+
+    **Pagination.** List endpoints come in pairs: `GET .../initial` returns the first page and
+    `GET .../page/{cursor}` returns the next one. A page holds at most 50 items, newest first.
+    `data` is `{ "cursor": ..., "pages": [...] }`. `cursor` is the id of the last item on the page
+    (a UUID for most lists, an int64 for messages) and is `null` once there is nothing further.
+    An empty first page is reported as 404 (NoMatches); an empty later page returns 200 with an empty `pages` array.
+
+    **Errors.** Status codes are listed per endpoint with the server's internal error name in parentheses.
+    Membership and ownership failures on guild resources are mostly reported as 404 (NoMatches) rather than 403.
 
 servers:
   - url: http://127.0.0.1:8080/apiV1
@@ -10,23 +23,24 @@ servers:
 
 tags:
   - name: Auth
-  - name: Guilds
-  - name: DMs
   - name: Invites
-  - name: Messages
-  - name: Relations
   - name: Users
+  - name: Relations
+  - name: DMs
+  - name: Guilds
+  - name: Channels
+  - name: Messages
   - name: Objects
+  - name: WebSockets
 
 security:
   - bearerAuth: []
 
 paths:
-  # ===================== AUTH =====================
   /auth/login:
     post:
       tags: [Auth]
-      summary: Log in
+      summary: "Log in"
       security: []
       requestBody:
         required: true
@@ -36,23 +50,20 @@ paths:
               $ref: '#/components/schemas/LoginCred'
       responses:
         '200':
-          description: >
-            Authenticated successfully. Returns the User record plus a
-            fresh access/refresh token pair.
+          description: "Authenticated. Returns the User record plus a fresh access/refresh token pair."
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserTokenObjResponse'
         '401':
-          description: No matching username/password (InvalidCredentials)
+          description: "Wrong username/password (InvalidCredentials). Any failure of the credential lookup is reported this way."
         '500':
-          $ref: '#/components/responses/DbError'
+          description: "JWT encode error (DecodeEncodeErr)"
 
   /auth/refresh:
     post:
       tags: [Auth]
-      summary: >
-        Exchange a refresh token for a new access/refresh token pair
+      summary: "Exchange a refresh token for a new token pair"
       security: []
       requestBody:
         required: true
@@ -62,26 +73,22 @@ paths:
               $ref: '#/components/schemas/RefreshBody'
       responses:
         '200':
-          description: New token pair issued
+          description: "New token pair issued. The submitted refresh token is revoked and cannot be used again."
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenPairResponse'
         '401':
-          description: >
-            Token failed to decode/verify (InvalidToken), was not a
-            Refresh-type token (WrongTokenType), was already blacklisted
-            (ExpiredToken), or had less than 60s of life left at check time
-            (InvalidToken).
+          description: "Token failed to decode/verify (InvalidToken), was not a Refresh token (WrongTokenType), was already used/revoked (ExpiredToken), or has under 60s of life left (InvalidToken)"
         '500':
-          description: Redis error, or JWT encode error creating the new pair
+          description: "Redis error or JWT encode error"
 
   /auth/sign_up:
     post:
       tags: [Auth]
-      summary: Create a new user account
-      security:
-        - inviteBearerAuth: []
+      summary: "Create a new user account"
+      description: "Requires an invite JWT issued by POST /invite/new_user. The invite is single-use and is only consumed once the account has actually been created, so a failed sign-up can be retried with the same invite."
+      security: [{inviteBearerAuth: []}]
       requestBody:
         required: true
         content:
@@ -89,460 +96,24 @@ paths:
             schema:
               $ref: '#/components/schemas/SignupCred'
       responses:
-        '201':
-          description: >
-            Account created. Returns the new User record plus a fresh
-            access/refresh token pair
+        '200':
+          description: "Account created. Returns the new User record plus a fresh token pair."
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserTokenObjResponse'
         '400':
-          description: nickname was shorter than 3 characters after trimming (InvalidNickname)
+          description: "nickname shorter than 3 characters after trimming (InvalidNickname), or username/password shorter than 3 after trimming (InvalidAccountCredentials)"
         '401':
-          description: Invite JWT missing/invalid, or expired (< 60s remaining) (InvalidToken)
+          description: "Invite JWT missing, invalid, expired, or already used (InvalidToken)"
         '500':
-          description: Db error, Redis error, or JWT encode error
+          description: "Db error (e.g. the insert failed), Redis error, or JWT encode error"
 
-  # ===================== GUILDS =====================
-  /group/guild:
-    post:
-      tags: [Guilds]
-      summary: Create a new guild
-      description: >
-        Creates the underlying group plus its guild metadata (name/parent
-        guild); caller is added as Owner. If either the metadata insert or
-        the owner-membership insert fails, the group is rolled back.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Grp'
-      responses:
-        '201':
-          description: Guild created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  /group/guild/all:
-    get:
-      tags: [Guilds]
-      summary: Get guilds the current user belongs to
-      description: >
-        Returns the bare Group records (id, is_dm) the caller is a member
-        of. Note this endpoint does not currently include the guild's name
-        or parent (`gp`) — those live on the separate guild-metadata table
-        and are not joined in here.
-      responses:
-        '200':
-          description: Guilds found (returned with HTTP 302 Found by this handler, not 200)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GroupListResponse'
-        '302':
-          description: List of groups (this handler returns StatusCode::FOUND rather than 200)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GroupListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No groups found (NoMatches)
-
-  /group/guild/invites:
-    get:
-      tags: [Invites]
-      summary: Get pending guild invites addressed to the current user
-      responses:
-        '302':
-          description: List of invites (returned with HTTP 302 Found by this handler)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GuildInviteListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No invites found (NoMatches)
-
-  /group/guild/invite/{invite_id}:
-    patch:
-      tags: [Invites]
-      summary: Accept or decline a pending guild invite addressed to the caller
-      parameters:
-        - name: invite_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/InvMng'
-      responses:
-        '200':
-          description: >
-            Invite processed. If accepted, the guild member is created at
-            the invite's rank. The invite is deleted either way.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Invite not found, or does not belong to the caller
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  /group/guild/{group_id}/members:
-    get:
-      tags: [Guilds]
-      summary: Get members of a guild
-      description: >
-        returned as a unique group member type which combines the stripped user and their rank in the group
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      responses:
-        '302':
-          description: List of group members (returned with HTTP 302 Found by this handler)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GroupMemberListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Group has no members / not found (NoMatches)
-
-  /group/guild/{group_id}/invite:
-    post:
-      tags: [Invites]
-      summary: Invite a user to a guild
-      description: Caller must already be a member with rank equal or greater than the rank being granted; self-invites are rejected
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GrpInv'
-      responses:
-        '201':
-          description: Invite created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '400':
-          description: Caller attempted to invite themselves (SelfInvite)
-        '403':
-          description: Caller is not a member of the group, or lacks sufficient rank (InvalidPrivilige)
-        '404':
-          description: Target user not found
-        '409':
-          description: An invite for this user to this group already exists (DuplicateData)
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  /group/guild/{group_id}:
-    delete:
-      tags: [Guilds]
-      summary: Delete a guild
-      description: can only be called by the group's owner(s)
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      responses:
-        '200':
-          description: Group deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Caller is a member but not Owner (InvalidPrivilige)
-        '404':
-          description: Group not found, or caller is not a member (NoMatches)
-    patch:
-      tags: [Guilds]
-      summary: Update a guild
-      description: Caller must hold rank Owner in the guild
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StrippedGroup'
-      responses:
-        '200':
-          description: Group updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Caller is a member but not Owner (InvalidPrivilige)
-        '404':
-          description: Caller is not a member of the group (NoMatches)
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  /group/guild/{group_id}/member/{member_id}:
-    delete:
-      tags: [Guilds]
-      summary: Remove a member from a guild
-      description: the rank of the caller is required to be higher than the recipient's rank
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-        - $ref: '#/components/parameters/MemberId'
-      responses:
-        '200':
-          description: Group member removed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Caller's rank is not strictly higher than the target's rank (InvalidPrivilige)
-        '404':
-          description: Caller, target, or group member row not found (NoMatches)
-
-  # ===================== DMs =====================
-  /group/dm/new/member/{member_id}:
-    post:
-      tags: [DMs]
-      summary: Start a DM with another user
-      description: >
-        Creates a new group, marks the caller as one side of the DM, and
-        creates a pending DM invite addressed to `member_id`. No request
-        body is taken; the target user is identified purely by the path
-        parameter.
-      parameters:
-        - $ref: '#/components/parameters/MemberId'
-      responses:
-        '201':
-          description: DM group and invite created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Target user not found (NoMatches)
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  /group/dm/invites:
-    get:
-      tags: [Invites]
-      summary: Get pending DM invites addressed to the current user
-      responses:
-        '302':
-          description: List of invites (returned with HTTP 302 Found by this handler)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DmInviteListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No invites found (NoMatches)
-
-  /group/dm/invite/{invite_id}:
-    patch:
-      tags: [Invites]
-      summary: Accept or decline a pending DM invite addressed to the caller
-      description: >
-        The pending invite row is always deleted. Note: unlike the guild
-        invite flow, accepting here does not currently attach the caller
-        to the DM record (no `user_b` is set) — it only re-saves the
-        invite row before deleting it, so accepting and declining have the
-        same practical effect at the moment.
-      parameters:
-        - name: invite_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/InvMng'
-      responses:
-        '200':
-          description: Invite processed and deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Invite not found, or does not belong to the caller
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  /group/dm/{group_id}:
-    delete:
-      tags: [DMs]
-      summary: Delete/leave a DM
-      description: caller must be one of the two participants (user_a or user_b) of the DM
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      responses:
-        '200':
-          description: DM group deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Caller is not a participant of this DM (InvalidPrivilige)
-        '404':
-          description: DM not found (NoMatches)
-
-  # ===================== MESSAGES =====================
-  /group/{group_id}/message:
-    post:
-      tags: [Messages]
-      summary: Post a new message to a group
-      description: >
-        Requires at least a message body or one attached file. Caller must
-        simply be a member of the group — no minimum rank is required.
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Msg'
-      responses:
-        '201':
-          description: Message created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '400':
-          description: Both message text and file_ids were empty (EmptyMessage)
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Caller is not a member of the group (NoMatches)
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  /group/{group_id}/message/all:
-    get:
-      tags: [Messages]
-      summary: Get the most recent messages for a group
-      description: Returns up to the 50 most recent messages, newest first
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      responses:
-        '302':
-          description: List of messages (returned with HTTP 302 Found by this handler)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Group has no messages, or caller is not a member (NoMatches)
-
-  /group/{group_id}/message/{message_id}:
-    delete:
-      tags: [Messages]
-      summary: Delete a message
-      description: >
-        Caller must hold rank Admin or Owner in the group. Note: the
-        message's own author/rank is not consulted — any non-User-rank
-        member may delete any message in the group.
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-        - $ref: '#/components/parameters/MessageId'
-      responses:
-        '200':
-          description: Message deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Caller's rank in the group is User (InvalidPrivilige)
-        '404':
-          description: Message not found (NoMatches)
-    patch:
-      tags: [Messages]
-      summary: Update a message
-      description: >
-        Caller must be a member of the group and must be the original
-        author of the message. Attached files are diffed against the
-        submitted `file_ids` and added/removed accordingly.
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-        - $ref: '#/components/parameters/MessageId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StrippedMessage'
-      responses:
-        '200':
-          description: Message updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Caller is not the message's author (NonOwner)
-        '404':
-          description: Caller is not a member of the group, or the message was not found (NoMatches)
-        '500':
-          description: >
-            Db error, or the message has no associated author to compare
-            against (DetachedOwner)
-
-  # ===================== INVITES (privilege grant) =====================
   /invite/new_user:
     post:
       tags: [Invites]
-      summary: Issue a privilege-grant invite to a possible new user.
-      description: Caller must currently hold Proprietor privilege.
+      summary: "Issue a sign-up invite"
+      description: "Caller must hold Proprietor privilege. The returned JWT carries the privilege level the new account will receive and is passed as the bearer token to /auth/sign_up."
       requestBody:
         required: true
         content:
@@ -551,7 +122,7 @@ paths:
               $ref: '#/components/schemas/PrivLevel'
       responses:
         '201':
-          description: Invite JWT created
+          description: "Invite JWT created"
           content:
             application/json:
               schema:
@@ -559,185 +130,18 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Caller does not hold Proprietor privilege (InvalidPrivilige)
-        '404':
-          description: Caller's user record not found
+          description: "Caller does not hold Proprietor privilege (InvalidPrivilige)"
         '500':
-          description: Db error or JWT encode error
+          description: "Db error or JWT encode error"
 
-  # ===================== RELATIONS =====================
-  /relation/friends:
-    get:
-      tags: [Relations]
-      summary: Get the current user's relations
-      description: this endpoint doesn't return users whom you still have pending invites for, only friends
-      responses:
-        '302':
-          description: >
-            List of relations (returned with HTTP 302 Found by this
-            handler). Each entry includes `state` (Friends or Blocked) so
-            the caller can distinguish the two.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RelationsListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No relations found (NoMatches)
-
-  /relation/invites:
-    get:
-      tags: [Invites]
-      summary: Get the current user's friend requests
-      responses:
-        '200':
-          description: List of friend requests
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StrippedUserListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No friend requests found (NoMatches)
-
-  /relation/{user_id}/invite:
-    post:
-      tags: [Invites]
-      summary: Invite a user to be your friend
-      parameters:
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Empty return on success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '400':
-          description: Caller attempted to friend-request themselves (SelfInvite)
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Caller is blocked by the target user, or has blocked them (UserUnreachable)
-        '404':
-          description: user not found (NoMatches)
-        '409':
-          description: A relation already exists between caller and target (DuplicateData)
-
-  /relation/invite/{user_id}:
-    patch:
-      tags: [Invites]
-      summary: Accept or decline a pending friend request from another user
-      parameters:
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/InvMng'
-      responses:
-        '200':
-          description: >
-            Request processed. If accepted, mirrored 'Friends' rows are
-            created for both users. The pending request row is deleted
-            either way.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: >
-            Request not found, does not belong to the caller, or is not
-            in the Pending state (NoMatches)
-
-  /relation/{user_id}:
-    patch:
-      tags: [Relations]
-      summary: Update a relation
-      description: >
-        Sets the relation's state directly to whatever is passed (e.g. to
-        Blocked, or back to Pending/Friends). Caller must already have a
-        relation row with the target user.
-      parameters:
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RelationStatus'
-      responses:
-        '200':
-          description: Relation updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '400':
-          description: Caller targeted themselves (SelfInvite)
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No existing relation between caller and the given user (NoMatches)
-        '500':
-          $ref: '#/components/responses/DbError'
-    delete:
-      tags: [Relations]
-      summary: Remove the caller's relation to a user
-      description: >
-        Tears down whatever relation currently exists between the caller and the given user
-      parameters:
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Relation removed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmptyDataResponse'
-        '400':
-          description: Caller targeted themselves (SelfInvite)
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: No relation exists between caller and the given user (NoMatches)
-        '500':
-          $ref: '#/components/responses/DbError'
-
-  # ===================== USERS =====================
   /user/me:
     delete:
       tags: [Users]
-      summary: Delete the current user's account
-      description: Fails if the caller is the last remaining Owner of any group they belong to
+      summary: "Delete the current user's account"
+      description: "Fails while the caller is the sole Owner of any guild. Direct messages the caller took part in remain, with the caller's slot cleared; messages they authored keep existing with no author. A DM with no participants left is removed by the database."
       responses:
         '200':
-          description: Account deleted
+          description: "Account deleted"
           content:
             application/json:
               schema:
@@ -745,91 +149,79 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: No matching user (NoMatches)
+          description: "No matching user (NoMatches)"
         '409':
-          description: Caller is the last Owner of one or more groups (DetachingOperation)
+          description: "Caller is the only Owner of at least one guild (DetachingOperation)"
+        '500':
+          description: "Db error"
     patch:
       tags: [Users]
-      summary: Update the current user's profile
+      summary: "Update the current user's profile"
+      description: "Full replacement of nickname, username, password and pfp. The caller's privilege level cannot be changed here."
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UnprivilegedInput'
+              $ref: '#/components/schemas/UserUpdate'
       responses:
         '200':
-          description: User updated
+          description: "User updated (the response body carries no data)"
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/EmptyDataResponse'
-        '400':
-          description: >
-            nickname was shorter than 3 characters after trimming
-            (InvalidNickname), or username/password was shorter than 3
-            characters after trimming (InvalidAccountCredentials)
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Caller's user record not found (NoMatches)
+        '400':
+          description: "nickname shorter than 3 characters after trimming (InvalidNickname), or username/password shorter than 3 after trimming (InvalidAccountCredentials)"
         '500':
-          $ref: '#/components/responses/DbError'
+          description: "Db error (including a username that is already taken) or the caller's record could not be loaded"
 
-  # ===================== OBJECTS =====================
   /object/upload:
     post:
       tags: [Objects]
-      summary: Upload one or more files as multipart fields
-      description: (deduplicated by SHA-256 hash) Body capped at 10MB.
+      summary: "Upload one or more files"
+      description: "Each multipart field is one file. Files are deduplicated by SHA-256 of their content; the stored mime type is inferred from the bytes, not from the client. Upload handling is a temporary implementation and will change when storage moves to an S3-style backend."
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
-              type: object
-              additionalProperties:
-                type: string
-                format: binary
-              description: One or more arbitrarily-named file fields.
+              $ref: '#/components/schemas/UploadForm'
       responses:
         '201':
-          description: Objects stored; returns the created/matched object ids
+          description: "Objects stored; returns one object id per uploaded field, in order"
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ObjectIdsResponse'
-        '400':
-          description: Malformed multipart body (BadRequest)
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "Malformed multipart body (BadRequest)"
         '413':
-          description: Payload exceeded 10,000,000 bytes (BodyTooLarge)
+          description: "Body exceeded 10,000,000 bytes (BodyTooLarge)"
         '415':
-          description: File type could not be inferred (UnknownType)
+          description: "File type could not be inferred from its content (UnknownType)"
         '500':
-          description: Db error or filesystem/operations error
+          description: "Db error, or filesystem error (OperationsError)"
 
   /object/pull/{object_id}:
     get:
       tags: [Objects]
-      summary: Fetch a previously uploaded object
-      description: The handler itself returns an empty body with an `X-Accel-Redirect` after that the responsibility of serving the file is relegated to the local filesystem and nginx
+      summary: "Fetch a previously uploaded object"
+      description: "Any authenticated user can fetch an object whose id they know."
       parameters:
-        - name: object_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/ObjectId'
       responses:
         '200':
-          description: The requested binary object (served via X-Accel-Redirect upstream)
+          description: "Empty body. The handler answers with an X-Accel-Redirect header and the object's Content-Type; the reverse proxy (nginx) then serves the file from disk."
           headers:
             X-Accel-Redirect:
               schema:
                 type: string
-              description: Internal redirect path for the reverse proxy
+              description: Internal path nginx serves the file from
             Content-Type:
               schema:
                 type: string
@@ -842,7 +234,970 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Object not found (NoMatches)
+          description: "Object not found (NoMatches)"
+
+  /relation/friend/initial:
+    get:
+      tags: [Relations]
+      summary: "List friends (first page)"
+      description: "Only users in the Friends state are returned: pending requests (see /relation/invite) and blocked users are not. Newest first, 50 per page."
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No friends on the first page (NoMatches)"
+
+  /relation/friend/page/{cursor}:
+    get:
+      tags: [Relations]
+      summary: "List friends (next page)"
+      description: "Only users in the Friends state are returned: pending requests (see /relation/invite) and blocked users are not. Newest first, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/CursorUuid'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No friends on the first page (NoMatches)"
+
+  /relation/invite/initial:
+    get:
+      tags: [Invites]
+      summary: "List incoming friend requests (first page)"
+      description: "Users who sent the caller a friend request that is still pending. Newest first, 50 per page."
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No requests on the first page (NoMatches)"
+
+  /relation/invite/page/{cursor}:
+    get:
+      tags: [Invites]
+      summary: "List incoming friend requests (next page)"
+      description: "Users who sent the caller a friend request that is still pending. Newest first, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/CursorUuid'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No requests on the first page (NoMatches)"
+
+  /relation/{user_id}/invite:
+    post:
+      tags: [Invites]
+      summary: "Send a friend request"
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '201':
+          description: "Request created in the Pending state"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "Caller targeted themselves (SelfInvite)"
+        '403':
+          description: "A block exists in either direction between the two users (UserUnreachable)"
+        '404':
+          description: "Target user not found (NoMatches)"
+        '409':
+          description: "A relation or request already exists between the two users, in either direction (DuplicateData)"
+        '500':
+          description: "Db error"
+
+  /relation/invite/{user_id}:
+    patch:
+      tags: [Invites]
+      summary: "Accept or decline a friend request"
+      description: "user_id is the user who sent the request."
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvMng'
+      responses:
+        '200':
+          description: "Processed. Accepting makes both users Friends of each other; declining deletes the request."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No pending request from that user to the caller (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /relation/toggle/{user_id}/block:
+    patch:
+      tags: [Relations]
+      summary: "Toggle block on a user"
+      description: "No request body. Only the caller's own relation row is changed; the other user's row is left as it is. A block prevents the blocked user from sending friend requests, DM invites and guild invites to the blocker."
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: "Caller's relation to the user flipped: Friends becomes Blocked, Blocked becomes Friends"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "Caller targeted themselves (SelfInvite)"
+        '403':
+          description: "The relation is still Pending and cannot be toggled (NonOwner)"
+        '404':
+          description: "The caller has no relation row with that user (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /relation/{user_id}:
+    delete:
+      tags: [Relations]
+      summary: "Remove the relation with a user"
+      description: "Currently deletes the relation in both directions between the caller and the user, including a block set by the other user. This behaviour may be restricted once block semantics are finalised."
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: "Relation removed"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "Caller targeted themselves (SelfInvite)"
+        '404':
+          description: "No relation exists between the two users (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /dm/member/{member_id}:
+    post:
+      tags: [DMs]
+      summary: "Start a DM with another user"
+      description: "No request body. The DM only becomes shared once the invitee accepts. The inviter can already post in it while it is pending. A declined invite leaves the one-sided DM behind."
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '201':
+          description: "DM created with the caller as its only participant, plus a pending invite for member_id"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "Caller targeted themselves (SelfInvite)"
+        '403':
+          description: "The target has blocked the caller (Blocked)"
+        '404':
+          description: "Target user not found (NoMatches)"
+        '409':
+          description: "The two users already share a DM, or an invite exists between them in either direction (DuplicateData)"
+        '500':
+          description: "Db error"
+
+  /dm/initial:
+    get:
+      tags: [DMs]
+      summary: "List the caller's DMs (first page)"
+      description: "DMs the caller participates in, including pending ones the caller started (user_b is null). Newest first, 50 per page."
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DmPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No DMs on the first page (NoMatches)"
+
+  /dm/page/{cursor}:
+    get:
+      tags: [DMs]
+      summary: "List the caller's DMs (next page)"
+      description: "DMs the caller participates in, including pending ones the caller started (user_b is null). Newest first, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/CursorUuid'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DmPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No DMs on the first page (NoMatches)"
+
+  /dm/invite/initial:
+    get:
+      tags: [Invites]
+      summary: "List incoming DM invites (first page)"
+      description: "Pending DM invites addressed to the caller. Newest first, 50 per page."
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DmInvitePageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No invites on the first page (NoMatches)"
+
+  /dm/invite/page/{cursor}:
+    get:
+      tags: [Invites]
+      summary: "List incoming DM invites (next page)"
+      description: "Pending DM invites addressed to the caller. Newest first, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/CursorUuid'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DmInvitePageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No invites on the first page (NoMatches)"
+
+  /dm/invite/{invite_id}:
+    patch:
+      tags: [Invites]
+      summary: "Accept or decline a DM invite"
+      description: "The two participants are stored in a canonical order (user_a is the lower UUID), so after accepting, user_a/user_b no longer indicate who started the DM."
+      parameters:
+        - $ref: '#/components/parameters/InviteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvMng'
+      responses:
+        '200':
+          description: "Processed. Accepting adds the caller to the DM; the invite is deleted either way."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "Invite not found, not addressed to the caller, or the DM has no remaining participant (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /dm/{dm_id}:
+    delete:
+      tags: [DMs]
+      summary: "Delete a DM"
+      parameters:
+        - $ref: '#/components/parameters/DmId'
+      responses:
+        '200':
+          description: "DM deleted for both participants"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: "Caller is not a participant (InvalidPrivilige)"
+        '404':
+          description: "DM not found (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /dm/{dm_id}/message:
+    post:
+      tags: [Messages]
+      summary: "Post a DM message"
+      parameters:
+        - $ref: '#/components/parameters/DmId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Msg'
+      responses:
+        '201':
+          description: "Message created"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "No message text and no file_ids (EmptyMessage)"
+        '403':
+          description: "Caller is not a participant of the DM (NonOwner)"
+        '404':
+          description: "DM not found (NoMatches)"
+        '500':
+          description: "Db error, e.g. an attached file id does not exist. The message is rolled back."
+
+  /dm/{dm_id}/message/initial:
+    get:
+      tags: [Messages]
+      summary: "List DM messages (first page)"
+      description: "Newest first, 50 per page. The cursor is the id of the oldest message on the page; pass it to /page/{cursor} to fetch older messages. Only participants can read."
+      parameters:
+        - $ref: '#/components/parameters/DmId'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DmMessagePageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No messages on the first page, or the caller is not a participant (NoMatches)"
+
+  /dm/{dm_id}/message/page/{cursor}:
+    get:
+      tags: [Messages]
+      summary: "List DM messages (next page)"
+      description: "Newest first, 50 per page. The cursor is the id of the oldest message on the page; pass it to /page/{cursor} to fetch older messages. Only participants can read."
+      parameters:
+        - $ref: '#/components/parameters/DmId'
+        - $ref: '#/components/parameters/CursorInt'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DmMessagePageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No messages on the first page, or the caller is not a participant (NoMatches)"
+
+  /dm/{dm_id}/message/{message_id}:
+    patch:
+      tags: [Messages]
+      summary: "Edit a DM message"
+      parameters:
+        - $ref: '#/components/parameters/DmId'
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Msg'
+      responses:
+        '200':
+          description: "Message updated; attached files are diffed against file_ids"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "No message text and no file_ids (EmptyMessage)"
+        '403':
+          description: "Caller is not the message's author (NonOwner)"
+        '404':
+          description: "DM or message not found (NoMatches)"
+        '500':
+          description: "Db error, or the message has no author left (DetachedOwner)"
+    delete:
+      tags: [Messages]
+      summary: "Delete a DM message"
+      description: "Only the author can delete a DM message."
+      parameters:
+        - $ref: '#/components/parameters/DmId'
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: "Message deleted"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: "Caller is not the message's author (NonOwner)"
+        '404':
+          description: "DM or message not found (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /guild:
+    post:
+      tags: [Guilds]
+      summary: "Create a guild"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Grp'
+      responses:
+        '201':
+          description: "Guild created with the caller as Owner and a default Text channel named \"main\""
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: "Db error. Partially created guilds are rolled back."
+
+  /guild/initial:
+    get:
+      tags: [Guilds]
+      summary: "List the caller's guilds (first page)"
+      description: "Guilds the caller is a member of. Newest first, 50 per page."
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuildPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No guilds on the first page (NoMatches)"
+
+  /guild/page/{cursor}:
+    get:
+      tags: [Guilds]
+      summary: "List the caller's guilds (next page)"
+      description: "Guilds the caller is a member of. Newest first, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/CursorUuid'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuildPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No guilds on the first page (NoMatches)"
+
+  /guild/invite/initial:
+    get:
+      tags: [Invites]
+      summary: "List incoming guild invites (first page)"
+      description: "Pending guild invites addressed to the caller. Newest first, 50 per page."
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuildInvitePageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No invites on the first page (NoMatches)"
+
+  /guild/invite/page/{cursor}:
+    get:
+      tags: [Invites]
+      summary: "List incoming guild invites (next page)"
+      description: "Pending guild invites addressed to the caller. Newest first, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/CursorUuid'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuildInvitePageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No invites on the first page (NoMatches)"
+
+  /guild/invite/{invite_id}:
+    patch:
+      tags: [Invites]
+      summary: "Accept or decline a guild invite"
+      parameters:
+        - $ref: '#/components/parameters/InviteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvMng'
+      responses:
+        '200':
+          description: "Processed. Accepting creates the membership at the invite's rank; the invite is deleted either way."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "Invite not found or not addressed to the caller (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /guild/{guild_id}:
+    patch:
+      tags: [Guilds]
+      summary: "Update a guild"
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Grp'
+      responses:
+        '200':
+          description: "Guild updated"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: "Caller is not an Owner (InvalidPrivilige)"
+        '404':
+          description: "Guild not found, or the caller is not a member (NoMatches)"
+        '500':
+          description: "Db error"
+    delete:
+      tags: [Guilds]
+      summary: "Delete a guild"
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+      responses:
+        '200':
+          description: "Guild deleted"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: "Caller is a member but not an Owner (InvalidPrivilige)"
+        '404':
+          description: "Guild not found, or the caller is not a member (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /guild/{guild_id}/member/initial:
+    get:
+      tags: [Guilds]
+      summary: "List guild members (first page)"
+      description: "Members with their rank. Caller must be a member. Ordered by user id descending, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuildMemberPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No members on the first page, guild not found, or the caller is not a member (NoMatches)"
+
+  /guild/{guild_id}/member/page/{cursor}:
+    get:
+      tags: [Guilds]
+      summary: "List guild members (next page)"
+      description: "Members with their rank. Caller must be a member. Ordered by user id descending, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/CursorUuid'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuildMemberPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No members on the first page, guild not found, or the caller is not a member (NoMatches)"
+
+  /guild/{guild_id}/invite:
+    post:
+      tags: [Invites]
+      summary: "Invite a user to a guild"
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrpInv'
+      responses:
+        '201':
+          description: "Invite created"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "Caller targeted themselves (SelfInvite)"
+        '403':
+          description: "Caller's rank is lower than the rank being granted (InvalidPrivilige), or the target has blocked the caller (Blocked)"
+        '404':
+          description: "Caller is not a member of the guild, or the target user does not exist (NoMatches)"
+        '409':
+          description: "The target is already a member, or already has a pending invite to this guild (DuplicateData)"
+        '500':
+          description: "Db error"
+
+  /guild/{guild_id}/member/{member_id}:
+    delete:
+      tags: [Guilds]
+      summary: "Remove a member, or leave a guild"
+      description: "Passing your own id leaves the guild. Removing someone else requires a strictly higher rank. The last remaining Owner cannot be removed or leave."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '200':
+          description: "Member removed"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: "Caller's rank is not strictly higher than the target's (InvalidPrivilige)"
+        '404':
+          description: "Caller or target is not a member of the guild (NoMatches)"
+        '409':
+          description: "The removal would leave the guild without an Owner (DetachingOperation)"
+        '500':
+          description: "Db error"
+
+  /guild/{guild_id}/channel:
+    post:
+      tags: [Channels]
+      summary: "Create a channel"
+      description: "The path has no trailing slash."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Chnl'
+      responses:
+        '201':
+          description: "Channel created"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: "Caller's rank is below Admin (InvalidPrivilige)"
+        '404':
+          description: "Caller is not a member of the guild (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /guild/{guild_id}/channel/initial:
+    get:
+      tags: [Channels]
+      summary: "List a guild's channels (first page)"
+      description: "Caller must be a member of the guild. Ordered by channel id descending, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No channels on the first page, or the caller is not a member (NoMatches)"
+
+  /guild/{guild_id}/channel/page/{cursor}:
+    get:
+      tags: [Channels]
+      summary: "List a guild's channels (next page)"
+      description: "Caller must be a member of the guild. Ordered by channel id descending, 50 per page."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/CursorUuid'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No channels on the first page, or the caller is not a member (NoMatches)"
+
+  /guild/{guild_id}/channel/{channel_id}:
+    patch:
+      tags: [Channels]
+      summary: "Rename a channel"
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/ChannelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelUpdate'
+      responses:
+        '200':
+          description: "Channel updated"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: "Caller's rank is below Admin (InvalidPrivilige)"
+        '404':
+          description: "Caller is not a member, or the channel does not belong to this guild (NoMatches)"
+        '500':
+          description: "Db error"
+    delete:
+      tags: [Channels]
+      summary: "Delete a channel"
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/ChannelId'
+      responses:
+        '200':
+          description: "Channel deleted"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: "Caller's rank is below Admin (InvalidPrivilige)"
+        '404':
+          description: "Caller is not a member, or the channel does not belong to this guild (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /guild/{guild_id}/channel/{channel_id}/message:
+    post:
+      tags: [Messages]
+      summary: "Post a channel message"
+      description: "Any guild member can post; no minimum rank is required."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/ChannelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Msg'
+      responses:
+        '201':
+          description: "Message created"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "No message text and no file_ids (EmptyMessage)"
+        '404':
+          description: "Caller is not a member, or the channel does not belong to this guild (NoMatches)"
+        '500':
+          description: "Db error, e.g. an attached file id does not exist. The message is rolled back."
+
+  /guild/{guild_id}/channel/{channel_id}/message/initial:
+    get:
+      tags: [Messages]
+      summary: "List channel messages (first page)"
+      description: "Newest first, 50 per page. The cursor is the id of the oldest message on the page; pass it to /page/{cursor} to fetch older messages. Caller must be a member of the guild and the channel must belong to it."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/ChannelId'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuildMessagePageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No messages on the first page, caller not a member, or channel not in this guild (NoMatches)"
+
+  /guild/{guild_id}/channel/{channel_id}/message/page/{cursor}:
+    get:
+      tags: [Messages]
+      summary: "List channel messages (next page)"
+      description: "Newest first, 50 per page. The cursor is the id of the oldest message on the page; pass it to /page/{cursor} to fetch older messages. Caller must be a member of the guild and the channel must belong to it."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/ChannelId'
+        - $ref: '#/components/parameters/CursorInt'
+      responses:
+        '200':
+          description: "Page of results"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuildMessagePageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "No messages on the first page, caller not a member, or channel not in this guild (NoMatches)"
+
+  /guild/{guild_id}/channel/{channel_id}/message/{message_id}:
+    patch:
+      tags: [Messages]
+      summary: "Edit a channel message"
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/ChannelId'
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Msg'
+      responses:
+        '200':
+          description: "Message updated; attached files are diffed against file_ids"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          description: "No message text and no file_ids (EmptyMessage)"
+        '403':
+          description: "Caller is not the message's author (NonOwner)"
+        '404':
+          description: "Caller is not a member, or the channel/message was not found in this guild (NoMatches)"
+        '500':
+          description: "Db error, or the message has no author left (DetachedOwner)"
+    delete:
+      tags: [Messages]
+      summary: "Delete a channel message"
+      description: "Authors can always delete their own messages. Otherwise the caller's rank must be strictly higher than the author's. If the author has left the guild or their account is gone, Admin or Owner is required."
+      parameters:
+        - $ref: '#/components/parameters/GuildId'
+        - $ref: '#/components/parameters/ChannelId'
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: "Message deleted"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: "Caller is not the author and does not outrank them (InvalidPrivilige)"
+        '404':
+          description: "Caller is not a member, or the channel/message was not found in this guild (NoMatches)"
+        '500':
+          description: "Db error"
+
+  /ws/upgrade:
+    get:
+      tags: [WebSockets]
+      summary: "Open a peer-to-peer call socket (deprecated)"
+      description: "Deprecated and being replaced; not covered by this specification. Accepts any method and performs a WebSocket upgrade."
+      deprecated: true
+      security: []
+      responses:
+        '101':
+          description: "Switching Protocols"
 
 components:
   securitySchemes:
@@ -850,475 +1205,277 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: >
-        JWT access token (Claims { sub: user_id, jti, iat, exp,
-        tkn_type: Access }), validated by the AuthUser extractor.
-
+      description: Access token (Claims with tkn_type = Access) validated by the AuthUser extractor.
     inviteBearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: >
-        Privilege-grant invite JWT (PrivClaims { priv_level, jti, iat,
-        exp }) issued by POST /invite/new_user, validated by the AuthInvite
-        extractor. Used only by /auth/sign_up — distinct from the regular
-        access-token bearerAuth scheme used elsewhere.
+      description: Sign-up invite JWT issued by POST /invite/new_user. Used only by /auth/sign_up.
+
   parameters:
-    GroupId:
-      name: group_id
+    GuildId:
+      name: guild_id
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
+      schema: { type: string, format: uuid }
+    ChannelId:
+      name: channel_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DmId:
+      name: dm_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     MemberId:
       name: member_id
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
+      schema: { type: string, format: uuid }
+    InviteId:
+      name: invite_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ObjectId:
+      name: object_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     MessageId:
       name: message_id
       in: path
       required: true
-      schema:
-        type: integer
-        format: int32
+      schema: { type: integer, format: int64 }
+    CursorUuid:
+      name: cursor
+      in: path
+      required: true
+      description: The `cursor` value from the previous page.
+      schema: { type: string, format: uuid }
+    CursorInt:
+      name: cursor
+      in: path
+      required: true
+      description: The `cursor` value from the previous page (a message id).
+      schema: { type: integer, format: int64 }
 
   responses:
     Unauthorized:
       description: Missing, invalid, or expired bearer token
-    BadRequest:
-      description: Invalid request payload
-    DbError:
-      description: Database operation failed
 
   schemas:
-    # ---- Generic response envelope: Res<T> ----
-    # `status` (StatusCode) is used as the actual HTTP status and is not
-    # part of the JSON body in this rendering; only success/msg/data are.
+    # ---- Envelope ----
     EmptyDataResponse:
       type: object
       properties:
-        success:
-          type: boolean
-        msg:
-          type: string
-        data:
-          nullable: true
+        success: { type: boolean }
+        msg: { type: string }
+        data: { nullable: true }
 
     # ---- Enums ----
     PrivilegeT:
       type: string
       enum: [Consumer, Proprietor]
-
     RankT:
       type: string
       enum: [User, Admin, Owner]
-      description: Ordered; User < Admin < Owner.
-
+      description: Ordered, User < Admin < Owner.
     RelationT:
       type: string
       enum: [Friends, Pending, Blocked]
+    ChannelT:
+      type: string
+      description: Channel kind. New guilds start with a `Text` channel named "main".
+      example: Text
 
-    # ---- Core entities ----
+    # ---- Entities ----
     User:
       type: object
       required: [id, nickname, prv, username, password, pfp]
       properties:
-        id:
-          type: string
-          format: uuid
-        nickname:
-          type: string
-        prv:
-          $ref: '#/components/schemas/PrivilegeT'
-        username:
-          type: string
-        password:
-          type: string
-        pfp:
-          type: string
-          format: uuid
-          nullable: true
-          description: Object id of the user's profile picture, if set.
-
-    UnprivilegedInput:
+        id: { type: string, format: uuid }
+        nickname: { type: string }
+        prv: { $ref: '#/components/schemas/PrivilegeT' }
+        username: { type: string }
+        password: { type: string }
+        pfp: { type: string, format: uuid, nullable: true, description: Object id of the profile picture }
+    StrippedUser:
       type: object
-      required: [nickname, username, password]
+      required: [user_id, nickname, pfp]
       properties:
-        nickname:
-          type: string
-          description: Must be at least 3 characters after trimming.
-        username:
-          type: string
-          description: Must be at least 3 characters after trimming.
-        password:
-          type: string
-          description: Must be at least 3 characters after trimming.
-        pfp:
-          type: string
-          format: uuid
-          nullable: true
-          description: Object id of the user's profile picture, if set.
-
-    UserRelation:
-      type: object
-      required: [id, nickname, pfp, state]
-      properties:
-        id:
-          type: string
-          format: uuid
-        nickname:
-          type: string
-        pfp:
-          type: string
-          format: uuid
-          nullable: true
-          description: Object id of the user's profile picture, if set.
-        state:
-          $ref: '#/components/schemas/RelationT'
-
-    GroupMember:
+        user_id: { type: string, format: uuid }
+        nickname: { type: string }
+        pfp: { type: string, format: uuid, nullable: true }
+    StrippedMember:
       type: object
       required: [user_id, nickname, pfp, rank]
       properties:
-        user_id:
-          type: string
-          format: uuid
-        nickname:
-          type: string
-        pfp:
-          type: string
-          format: uuid
-          nullable: true
-        rank:
-          $ref: '#/components/schemas/RankT'
-
-    StrippedUser:
+        user_id: { type: string, format: uuid }
+        nickname: { type: string }
+        pfp: { type: string, format: uuid, nullable: true }
+        rank: { $ref: '#/components/schemas/RankT' }
+    Guild:
       type: object
+      required: [id, name, gp]
       properties:
-        user_id:
-          type: string
-          format: uuid
-        nickname:
-          type: string
-        pfp:
-          type: string
-          format: uuid
-          nullable: true
-
-    Group:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        gp: { type: string, format: uuid, nullable: true, description: Object id of the guild picture }
+    StrippedChannel:
       type: object
-      required: [id, is_dm]
-      description: >
-        The bare group record. Guild display metadata (name, parent guild)
-        lives separately and is not part of this entity.
+      required: [id, name, category]
       properties:
-        id:
-          type: string
-          format: uuid
-        is_dm:
-          type: boolean
-          description: >
-            Intended to distinguish DM groups from guilds, but both the
-            guild-creation and DM-creation code paths currently set this
-            to false, so it cannot be relied on to tell them apart today.
-
-    Grp:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        category: { $ref: '#/components/schemas/ChannelT' }
+    Dm:
       type: object
-      required: [name]
-      description: Request body for creating a new guild.
+      required: [id, user_a, user_b]
+      description: |
+        A pending DM has the inviter in `user_a` and `user_b` null. After the invite is accepted both are set and
+        stored in canonical order (user_a < user_b). A slot is null when that participant's account was deleted.
       properties:
-        name:
-          type: string
-        gp:
-          type: string
-          format: uuid
-          nullable: true
-          description: Optional id of a parent guild.
-
-    StrippedGroup:
-      type: object
-      required: [name, is_dm, gp]
-      description: Request body for updating an existing guild's metadata.
-      properties:
-        name:
-          type: string
-        is_dm:
-          type: boolean
-        gp:
-          type: string
-          format: uuid
-          nullable: true
-
+        id: { type: string, format: uuid }
+        user_a: { type: string, format: uuid, nullable: true }
+        user_b: { type: string, format: uuid, nullable: true }
     Dm_Invite:
       type: object
-      required: [id, group_id, user_id]
+      required: [id, dm_id, recipient]
       properties:
-        id:
-          type: string
-          format: uuid
-        group_id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-          description: The invited user.
-
-    MsgPage:
-      type: object
-      required: [group_id, user_id]
-      properties:
-        file_ids:
-          type: array
-          items:
-            type: string
-            format: uuid
-        message:
-          type: string
-          nullable: true
-        group_id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-
-    MsgPageDataBody:
-      type: object
-      required: [cursor, pages]
-      properties:
-        cursor:
-          type: string
-          format: base64
-        pages:
-          type: array
-          items:
-            $ref: '#/components/schemas/MsgPage'
-
-    StrippedMessage:
-      type: object
-      required: [file_ids]
-      properties:
-        message:
-          type: string
-          nullable: true
-        file_ids:
-          type: array
-          items:
-            type: string
-            format: uuid
-
+        id: { type: string, format: uuid }
+        dm_id: { type: string, format: uuid }
+        recipient: { type: string, format: uuid }
     Guild_Invite:
       type: object
-      required: [id, group_id, user_id, rank]
+      required: [id, guild_id, recipient, rank]
       properties:
-        id:
-          type: string
-          format: uuid
-        group_id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-        rank:
-          $ref: '#/components/schemas/RankT'
-
-    # ---- Request bodies (from post.rs / patch.rs) ----
-    GrpInv:
+        id: { type: string, format: uuid }
+        guild_id: { type: string, format: uuid }
+        recipient: { type: string, format: uuid }
+        rank: { $ref: '#/components/schemas/RankT' }
+    GuildChannelMessage:
       type: object
-      required: [user_id, rank]
+      required: [id, message, file_ids, channel_id, user_id]
       properties:
-        user_id:
-          type: string
-          format: uuid
-        rank:
-          $ref: '#/components/schemas/RankT'
-
-    InvMng:
+        id: { type: integer, format: int64 }
+        message: { type: string, nullable: true }
+        file_ids: { type: array, items: { type: string, format: uuid } }
+        channel_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid, nullable: true, description: Null if the author's account was deleted }
+    DmMessage:
       type: object
-      required: [accept]
+      required: [id, message, file_ids, dm_id, user_id]
       properties:
-        accept:
-          type: boolean
-      description: >
-        Used by PATCH /group/guild/invite/{invite_id}, PATCH
-        /group/dm/invite/{invite_id}, and PATCH /relation/invite/{user_id}
-        — the invite/request being managed is identified entirely by the
-        path parameter, so no invite payload is carried in the body.
+        id: { type: integer, format: int64 }
+        message: { type: string, nullable: true }
+        file_ids: { type: array, items: { type: string, format: uuid } }
+        dm_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid, nullable: true, description: Null if the author's account was deleted }
 
-    Msg:
-      type: object
-      required: [file_ids]
-      properties:
-        file_ids:
-          type: array
-          items:
-            type: string
-            format: uuid
-        message:
-          type: string
-          nullable: true
-
-    PrivLevel:
-      type: object
-      required: [prv_level]
-      properties:
-        prv_level:
-          $ref: '#/components/schemas/PrivilegeT'
-
-    RelationStatus:
-      type: object
-      required: [state]
-      properties:
-        state:
-          $ref: '#/components/schemas/RelationT'
-
-    # ---- Auth (from endpoints.rs) ----
+    # ---- Request bodies ----
     LoginCred:
       type: object
       required: [username, password]
       properties:
-        username:
-          type: string
-        password:
-          type: string
-          format: password
-
+        username: { type: string }
+        password: { type: string, format: password }
     SignupCred:
       type: object
       required: [nickname, username, password]
       properties:
-        nickname:
-          type: string
-          description: Must be at least 3 characters after trimming.
-        username:
-          type: string
-        password:
-          type: string
-          format: password
-        pfp:
-          type: string
-          format: uuid
-          nullable: true
-
+        nickname: { type: string, description: At least 3 characters after trimming }
+        username: { type: string, description: At least 3 characters after trimming }
+        password: { type: string, format: password, description: At least 3 characters after trimming }
     RefreshBody:
       type: object
       required: [refresh_tkn]
       properties:
-        refresh_tkn:
-          type: string
-          description: JWT with Claims.tkn_type = Refresh.
+        refresh_tkn: { type: string }
+    UserUpdate:
+      type: object
+      required: [nickname, username, password]
+      properties:
+        nickname: { type: string, description: At least 3 characters after trimming }
+        username: { type: string, description: At least 3 characters after trimming }
+        password: { type: string, format: password, description: At least 3 characters after trimming }
+        pfp: { type: string, format: uuid, nullable: true }
+    PrivLevel:
+      type: object
+      required: [prv_level]
+      properties:
+        prv_level: { $ref: '#/components/schemas/PrivilegeT' }
+    Grp:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        gp: { type: string, format: uuid, nullable: true }
+    GrpInv:
+      type: object
+      required: [user_id, rank]
+      properties:
+        user_id: { type: string, format: uuid }
+        rank: { $ref: '#/components/schemas/RankT' }
+    Chnl:
+      type: object
+      required: [name, category]
+      properties:
+        name: { type: string }
+        category: { $ref: '#/components/schemas/ChannelT' }
+    ChannelUpdate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+    InvMng:
+      type: object
+      required: [accept]
+      properties:
+        accept: { type: boolean }
+    Msg:
+      type: object
+      required: [file_ids]
+      description: At least one of `message` or a non-empty `file_ids` is required. On edit, attached files are replaced by exactly this list.
+      properties:
+        message: { type: string, nullable: true }
+        file_ids: { type: array, items: { type: string, format: uuid } }
+    UploadForm:
+      type: object
+      additionalProperties: { type: string, format: binary }
+      description: One or more arbitrarily-named file fields, 10,000,000 bytes in total at most.
 
+    # ---- Auth payloads ----
     TokenPair:
       type: object
       required: [access_tkn, refresh_tkn]
       properties:
-        access_tkn:
-          type: string
-          description: JWT with Claims.tkn_type = Access.
-        refresh_tkn:
-          type: string
-          description: JWT with Claims.tkn_type = Refresh.
-
+        access_tkn: { type: string }
+        refresh_tkn: { type: string }
     UserTokenObj:
       type: object
       required: [user_data, token_data]
       properties:
-        user_data:
-          $ref: '#/components/schemas/User'
-        token_data:
-          $ref: '#/components/schemas/TokenPair'
-
-    # ---- Response payloads (Res<T>.data variants) ----
+        user_data: { $ref: '#/components/schemas/User' }
+        token_data: { $ref: '#/components/schemas/TokenPair' }
     UserTokenObjResponse:
       allOf:
         - $ref: '#/components/schemas/EmptyDataResponse'
         - type: object
           properties:
-            data:
-              $ref: '#/components/schemas/UserTokenObj'
-
+            data: { $ref: '#/components/schemas/UserTokenObj' }
     TokenPairResponse:
       allOf:
         - $ref: '#/components/schemas/EmptyDataResponse'
         - type: object
           properties:
-            data:
-              $ref: '#/components/schemas/TokenPair'
-
-    StrippedUserListResponse:
-      allOf:
-        - $ref: '#/components/schemas/EmptyDataResponse'
-        - type: object
-          properties:
-            data:
-              type: array
-              items:
-                $ref: '#/components/schemas/StrippedUser'
-
-    RelationsListResponse:
-      allOf:
-        - $ref: '#/components/schemas/EmptyDataResponse'
-        - type: object
-          properties:
-            data:
-              type: array
-              items:
-                $ref: '#/components/schemas/UserRelation'
-
-    GroupMemberListResponse:
-      allOf:
-        - $ref: '#/components/schemas/EmptyDataResponse'
-        - type: object
-          properties:
-            data:
-              type: array
-              items:
-                $ref: '#/components/schemas/GroupMember'
-
-    GroupListResponse:
-      allOf:
-        - $ref: '#/components/schemas/EmptyDataResponse'
-        - type: object
-          properties:
-            data:
-              type: array
-              items:
-                $ref: '#/components/schemas/Group'
-
-    MessageListResponse:
-      allOf:
-        - $ref: '#/components/schemas/EmptyDataResponse'
-        - type: object
-          properties:
-            data:
-              $ref: '#/components/schemas/MsgPageDataBody'
-
-    GuildInviteListResponse:
-      allOf:
-        - $ref: '#/components/schemas/EmptyDataResponse'
-        - type: object
-          properties:
-            data:
-              type: array
-              items:
-                $ref: '#/components/schemas/Guild_Invite'
-
-    DmInviteListResponse:
-      allOf:
-        - $ref: '#/components/schemas/EmptyDataResponse'
-        - type: object
-          properties:
-            data:
-              type: array
-              items:
-                $ref: '#/components/schemas/Dm_Invite'
-
+            data: { $ref: '#/components/schemas/TokenPair' }
     InvJwtResponse:
       allOf:
         - $ref: '#/components/schemas/EmptyDataResponse'
@@ -1327,12 +1484,7 @@ components:
             data:
               type: object
               properties:
-                jwt:
-                  type: string
-                  description: >
-                    JWT encoding PrivClaims { priv_level, jti, iat, exp }
-                    for the requested privilege level.
-
+                jwt: { type: string }
     ObjectIdsResponse:
       allOf:
         - $ref: '#/components/schemas/EmptyDataResponse'
@@ -1341,8 +1493,115 @@ components:
             data:
               type: object
               properties:
-                ids:
-                  type: array
-                  items:
-                    type: string
-                    format: uuid
+                ids: { type: array, items: { type: string, format: uuid } }
+
+    # ---- Pages ----
+    UserPage:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor: { type: string, format: uuid, nullable: true }
+        pages: { type: array, items: { $ref: '#/components/schemas/StrippedUser' } }
+    DmPage:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor: { type: string, format: uuid, nullable: true }
+        pages: { type: array, items: { $ref: '#/components/schemas/Dm' } }
+    DmInvitePage:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor: { type: string, format: uuid, nullable: true }
+        pages: { type: array, items: { $ref: '#/components/schemas/Dm_Invite' } }
+    GuildPage:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor: { type: string, format: uuid, nullable: true }
+        pages: { type: array, items: { $ref: '#/components/schemas/Guild' } }
+    GuildInvitePage:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor: { type: string, format: uuid, nullable: true }
+        pages: { type: array, items: { $ref: '#/components/schemas/Guild_Invite' } }
+    GuildMemberPage:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor: { type: string, format: uuid, nullable: true }
+        pages: { type: array, items: { $ref: '#/components/schemas/StrippedMember' } }
+    ChannelPage:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor: { type: string, format: uuid, nullable: true }
+        pages: { type: array, items: { $ref: '#/components/schemas/StrippedChannel' } }
+    GuildMessagePage:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor: { type: integer, format: int64, nullable: true }
+        pages: { type: array, items: { $ref: '#/components/schemas/GuildChannelMessage' } }
+    DmMessagePage:
+      type: object
+      required: [cursor, pages]
+      properties:
+        cursor: { type: integer, format: int64, nullable: true }
+        pages: { type: array, items: { $ref: '#/components/schemas/DmMessage' } }
+
+    UserPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/UserPage' }
+    DmPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/DmPage' }
+    DmInvitePageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/DmInvitePage' }
+    GuildPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/GuildPage' }
+    GuildInvitePageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/GuildInvitePage' }
+    GuildMemberPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/GuildMemberPage' }
+    ChannelPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/ChannelPage' }
+    GuildMessagePageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/GuildMessagePage' }
+    DmMessagePageResponse:
+      allOf:
+        - $ref: '#/components/schemas/EmptyDataResponse'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/DmMessagePage' }

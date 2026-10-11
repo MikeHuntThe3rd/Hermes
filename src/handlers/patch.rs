@@ -211,13 +211,19 @@ pub async fn manage_dm_invite(
         return Err(InternalError::NoMatches);
     };
 
+    let (user_a, user_b) = if existing_user < invite.recipient {
+        (Some(existing_user), Some(invite.recipient))
+    } else {
+        (Some(invite.recipient), Some(existing_user))
+    };
+
     if data.accept {
         state
             .ps_interface
             .update_one(Dm {
                 id: dm.id,
-                user_a: Some(existing_user),
-                user_b: Some(invite.recipient),
+                user_a: user_a,
+                user_b: user_b,
             })
             .await?;
     }

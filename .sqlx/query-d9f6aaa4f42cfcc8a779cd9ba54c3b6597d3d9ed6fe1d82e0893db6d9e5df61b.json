@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM relations\n        WHERE (relating_user = $1 AND related_user = $2)\n        OR (relating_user = $2 AND related_user = $1) \n        RETURNING relating_user, related_user, state AS \"state: RelationT\";",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "relating_user",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "relations",
+            "name": "relating_user"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "related_user",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "relations",
+            "name": "related_user"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "state: RelationT",
+        "type_info": {
+          "Custom": {
+            "name": "relation_t",
+            "kind": {
+              "Enum": [
+                "Friends",
+                "Pending",
+                "Blocked"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "relations",
+            "name": "state"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d9f6aaa4f42cfcc8a779cd9ba54c3b6597d3d9ed6fe1d82e0893db6d9e5df61b"
+}

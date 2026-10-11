@@ -1,0 +1,75 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT guild_id, member_id, rank AS \"rank: RankT\" FROM guild_members g WHERE g.guild_id = $1 AND g.rank = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "guild_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "guild_members",
+            "name": "guild_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "member_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "guild_members",
+            "name": "member_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "rank: RankT",
+        "type_info": {
+          "Custom": {
+            "name": "rank_t",
+            "kind": {
+              "Enum": [
+                "User",
+                "Admin",
+                "Owner"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "guild_members",
+            "name": "rank"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "rank_t",
+            "kind": {
+              "Enum": [
+                "User",
+                "Admin",
+                "Owner"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8f9a3927bd7a04cdd8b9e04912cf7ce12a6f8b97178aa1f59649fa478acc71b5"
+}

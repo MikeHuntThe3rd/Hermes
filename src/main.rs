@@ -9,9 +9,7 @@ mod types;
 use std::{env, path, sync::Arc, time::Duration};
 
 use axum::{
-    Router,
-    extract::DefaultBodyLimit,
-    routing::{any, delete, get, patch, post},
+    Router, extract::DefaultBodyLimit, http::{Method, header}, routing::{any, delete, get, patch, post},
 };
 use dashmap::DashMap;
 use fred::{
@@ -21,7 +19,7 @@ use fred::{
         config::{Config, TcpConfig},
     },
 };
-use tower_http::{cors::CorsLayer, services::ServeDir};
+use tower_http::{cors::{Any, CorsLayer}, services::ServeDir};
 use uuid::Uuid;
 
 use crate::responses::error_t::InternalError;
@@ -32,6 +30,7 @@ use handlers::{delete::*, get::*, patch::*, post::*, ws::*};
 use types::{AppState, OBJ_PTH_STR, TEMP_PTH_STR};
 
 use crate::{db::LiteInterface, types::User};
+
 
 async fn ensure_master_user(state: AppState) {
     let inf = state.ps_interface;
@@ -129,6 +128,16 @@ async fn main() {
     let state = setup().await;
     tokio::spawn(cleaner::cleaner_subprocess(state.clone()));
 
+    let cors = CorsLayer::new().allow_origin(Any).allow_methods([
+        Method::GET,
+        Method::POST,
+        Method::PATCH,
+        Method::DELETE,
+        Method::OPTIONS,
+    ]).allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+    .max_age(Duration::from_secs(3600));
+
+
     let auth: Router<AppState> = Router::new()
         .route("/login", post(login))
         .route("/refresh", post(refresh))
@@ -136,20 +145,20 @@ async fn main() {
 
     let dm: Router<AppState> = Router::new()
         .route("/member/{member_id}", post(add_dm))
-        .route("/inital", get(get_inital_dms))
+        .route("/initial", get(get_initial_dms))
         .route("/page/{cursor}", get(get_dms_from))
-        .route("/invite/inital", get(get_inital_dm_invites))
+        .route("/invite/initial", get(get_initial_dm_invites))
         .route("/invite/page/{cursor}", get(get_dm_invites_from))
         .route("/invite/{invite_id}", patch(manage_dm_invite))
         .route("/{dm_id}/message", post(add_dm_message))
         .route("/{dm_id}/message/{message_id}", patch(update_dm_message))
         .route("/{dm_id}/message/{message_id}", delete(delete_dm_message))
-        .route("/{dm_id}/message/inital", get(get_inital_dm_messages))
+        .route("/{dm_id}/message/initial", get(get_initial_dm_messages))
         .route("/{dm_id}/message/page/{cursor}", get(get_dm_messages_from))
         .route("/{dm_id}", delete(delete_dm));
 
     let channel: Router<AppState> = Router::new()
-        .route("/inital", get(get_inital_channels))
+        .route("/initial", get(get_initial_channels))
         .route("/page/{cursor}", get(get_channels_from))
         .route("/{channel_id}/message", post(add_guild_channel_message))
         .route(
@@ -161,8 +170,8 @@ async fn main() {
             delete(delete_guild_channel_message),
         )
         .route(
-            "/{channel_id}/message/inital",
-            get(get_inital_channel_messages),
+            "/{channel_id}/message/initial",
+            get(get_initial_channel_messages),
         )
         .route(
             "/{channel_id}/message/page/{cursor}",
@@ -174,11 +183,11 @@ async fn main() {
 
     let guild: Router<AppState> = Router::new()
         .route("/", post(add_guild))
-        .route("/inital", get(get_inital_guilds))
+        .route("/initial", get(get_initial_guilds))
         .route("/page/{cursor}", get(get_guilds_from))
-        .route("/invite/inital", get(get_inital_guild_invites))
+        .route("/invite/initial", get(get_initial_guild_invites))
         .route("/invite/page/{cursor}", get(get_guild_invites_from))
-        .route("/{guild_id}/member/inital", get(get_inital_guild_members))
+        .route("/{guild_id}/member/initial", get(get_initial_guild_members))
         .route("/{guild_id}/member/page/{cursor}", get(get_guild_members_from))
         .route("/invite/{invite_id}", patch(manage_guild_invite))
         .route("/{guild_id}/invite", post(invite_guild_member))
@@ -191,9 +200,9 @@ async fn main() {
         .nest("/{guild_id}/channel", channel);
 
     let relations: Router<AppState> = Router::new()
-        .route("/friend/inital", get(get_inital_friends))
+        .route("/friend/initial", get(get_initial_friends))
         .route("/friend/page/{cursor}", get(get_friends_from))
-        .route("/invite/inital", get(get_inital_friend_invites))
+        .route("/invite/initial", get(get_initial_friend_invites))
         .route("/invite/page/{cursor}", get(get_friend_invites_from))
         .route("/{user_id}/invite", post(create_friend_invite))
         .route("/invite/{user_id}", patch(manage_friend_invite))
@@ -230,7 +239,7 @@ async fn main() {
         /* ===== WebSockets ===== */
         .nest("/ws", sockets)
         /* ===== Generics ===== */
-        .layer(CorsLayer::very_permissive())
+        .layer(cors)
         .with_state(state);
 
     let interface: Router<()> = Router::new()

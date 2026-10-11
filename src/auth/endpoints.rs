@@ -49,7 +49,7 @@ pub async fn login(
             &vec![&data.username, &data.password],
         ))
         .await
-        .map_err(|e| GenericErr::Auth(AuthError::InvalidCredentials))?;
+        .map_err(|_| GenericErr::Auth(AuthError::InvalidCredentials))?;
 
     if user.username == data.username && user.password == data.password {
         let access = create_jwt(user.id, TokenType::Access, &inf.jwt_secret)

@@ -132,7 +132,8 @@ pub async fn add_dm(
 
     let existing_invite_query = sqlx::query_as!(Dm_Invite, 
         r#"SELECT i.* FROM dm_invites i JOIN dms d ON d.id = i.dm_id
-        WHERE i.recipient = $1 AND (d.user_a = $2 OR d.user_b = $2) LIMIT 1"#,
+        WHERE (i.recipient = $1 AND d.user_a = $2) OR (i.recipient = $2 AND d.user_a = $1) 
+        LIMIT 1"#,
         member_id,
         auth.user_id
     );
@@ -423,7 +424,7 @@ pub async fn create_friend_invite(
         .ps_interface
         .select_one::<Uuid, User>((&["id"], &[user_id]))
         .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+        .map_err(|e| GenericErr::Internal(e))?;
 
     let peer_to_caller_relation: Vec<Relation> = state
         .ps_interface
