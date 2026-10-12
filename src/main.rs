@@ -9,7 +9,10 @@ mod types;
 use std::{env, path, sync::Arc, time::Duration};
 
 use axum::{
-    Router, extract::DefaultBodyLimit, http::{Method, header}, routing::{any, delete, get, patch, post},
+    Router,
+    extract::DefaultBodyLimit,
+    http::{Method, header},
+    routing::{any, delete, get, patch, post},
 };
 use dashmap::DashMap;
 use fred::{
@@ -19,7 +22,10 @@ use fred::{
         config::{Config, TcpConfig},
     },
 };
-use tower_http::{cors::{Any, CorsLayer}, services::ServeDir};
+use tower_http::{
+    cors::{Any, CorsLayer},
+    services::ServeDir,
+};
 use uuid::Uuid;
 
 use crate::responses::error_t::InternalError;
@@ -30,7 +36,6 @@ use handlers::{delete::*, get::*, patch::*, post::*, ws::*};
 use types::{AppState, OBJ_PTH_STR, TEMP_PTH_STR};
 
 use crate::{db::LiteInterface, types::User};
-
 
 async fn ensure_master_user(state: AppState) {
     let inf = state.ps_interface;
@@ -45,7 +50,12 @@ async fn ensure_master_user(state: AppState) {
             &vec![usr_nm.clone(), pswrd.clone()],
         ))
         .await;
-
+    //TODO: master user logic changes
+    // match user {
+    //     Ok(u) if u.prv != PrivilegeT::Proprietor => {}
+    //     Err(e) if e == InternalError::NoMatches => {}
+    //     Err(e) => {}
+    // }
     if let Err(error) = user {
         match error {
             InternalError::DbError => {
@@ -128,15 +138,17 @@ async fn main() {
     let state = setup().await;
     tokio::spawn(cleaner::cleaner_subprocess(state.clone()));
 
-    let cors = CorsLayer::new().allow_origin(Any).allow_methods([
-        Method::GET,
-        Method::POST,
-        Method::PATCH,
-        Method::DELETE,
-        Method::OPTIONS,
-    ]).allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
-    .max_age(Duration::from_secs(3600));
-
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+        .max_age(Duration::from_secs(3600));
 
     let auth: Router<AppState> = Router::new()
         .route("/login", post(login))
@@ -188,7 +200,10 @@ async fn main() {
         .route("/invite/initial", get(get_initial_guild_invites))
         .route("/invite/page/{cursor}", get(get_guild_invites_from))
         .route("/{guild_id}/member/initial", get(get_initial_guild_members))
-        .route("/{guild_id}/member/page/{cursor}", get(get_guild_members_from))
+        .route(
+            "/{guild_id}/member/page/{cursor}",
+            get(get_guild_members_from),
+        )
         .route("/invite/{invite_id}", patch(manage_guild_invite))
         .route("/{guild_id}/invite", post(invite_guild_member))
         .route("/{guild_id}", delete(delete_guild))
@@ -219,7 +234,7 @@ async fn main() {
         .route("/pull/{object_id}", get(pull))
         .layer(DefaultBodyLimit::max(10000000));
 
-    let sockets: Router<AppState> = Router::new().route("/upgrade", any(ws_upgrade));
+    // let sockets: Router<AppState> = Router::new().route("/upgrade", any(ws_upgrade));
 
     let api = Router::new()
         /* ===== Invites ===== */
@@ -237,7 +252,7 @@ async fn main() {
         /* ===== Objects ===== */
         .nest("/object", objects)
         /* ===== WebSockets ===== */
-        .nest("/ws", sockets)
+        // .nest("/ws", sockets)
         /* ===== Generics ===== */
         .layer(cors)
         .with_state(state);

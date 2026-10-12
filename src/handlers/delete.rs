@@ -130,8 +130,11 @@ pub async fn delete_guild_member(
             RankT::Owner as RankT
         );
 
-        let orphan_guilds = state.ps_interface.generic_fetch(orphan_guilds_query)
-        .await.map_err(|e| GenericErr::Internal(e))?;
+        let orphan_guilds = state
+            .ps_interface
+            .generic_fetch(orphan_guilds_query)
+            .await
+            .map_err(|e| GenericErr::Internal(e))?;
 
         if orphan_guilds.len() == 1 {
             return Err(GenericErr::Internal(InternalError::DetachingOperation));
@@ -169,7 +172,9 @@ pub async fn delete_relation(
         return Err(GenericErr::Auth(AuthError::SelfInvite));
     }
 
-    let delete_query = sqlx::query_as!(Relation, r#"DELETE FROM relations
+    let delete_query = sqlx::query_as!(
+        Relation,
+        r#"DELETE FROM relations
         WHERE (relating_user = $1 AND related_user = $2)
         OR (relating_user = $2 AND related_user = $1) 
         RETURNING relating_user, related_user, state AS "state: RelationT";"#,
@@ -177,8 +182,11 @@ pub async fn delete_relation(
         user_id
     );
 
-    let successful_deletes = state.ps_interface.generic_fetch(delete_query)
-    .await.map_err(|e| GenericErr::Internal(e))?;
+    let successful_deletes = state
+        .ps_interface
+        .generic_fetch(delete_query)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
     if successful_deletes.is_empty() {
         return Err(GenericErr::Internal(InternalError::NoMatches));
@@ -270,12 +278,29 @@ pub async fn delete_guild_channel_message(
         .next()
         .ok_or(GenericErr::Internal(InternalError::NoMatches))?;
 
-    if let Some(user) = message.user_id && user != auth.user_id &&
-        let Some(existing_member) = state.ps_interface
-        .select_many::<Uuid, Guild_Member>(Some((&["guild_id", "member_id"],&[guild_id, user])), Some(1))
-        .await.map_err(|e| GenericErr::Internal(e))?.into_iter().next() &&
-        existing_member.rank >= member.rank
-    {
+    let allowed = match message.user_id {
+        Some(u) if auth.user_id == u => true,
+        Some(u) => {
+            let author = state
+                .ps_interface
+                .select_many::<Uuid, Guild_Member>(
+                    Some((&["guild_id", "member_id"], &[guild_id, u])),
+                    Some(1),
+                )
+                .await
+                .map_err(|e| GenericErr::Internal(e))?
+                .into_iter()
+                .next();
+
+            match author {
+                Some(a) => member.rank > a.rank,
+                None => member.rank >= RankT::Admin,
+            }
+        }
+        None => member.rank >= RankT::Admin,
+    };
+
+    if !allowed {
         return Err(GenericErr::Auth(AuthError::InvalidPrivilige));
     }
 

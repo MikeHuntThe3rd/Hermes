@@ -565,7 +565,10 @@ async fn get_guild_channel_messages(
     state: AppState,
 ) -> Result<Res<GuildMsgResponse>, InternalError> {
     fetch_guild_member(state.clone(), &guild_id, &user_id).await?;
-    state.ps_interface.select_one::<Uuid, Channel>((&["id","guild_id"], &[channel_id, guild_id])).await?;
+    state
+        .ps_interface
+        .select_one::<Uuid, Channel>((&["id", "guild_id"], &[channel_id, guild_id]))
+        .await?;
 
     let messages: Vec<GuildChannelMessage> = if let Some(pin) = cursor {
         let messages_query = sqlx::query_as!(
@@ -846,7 +849,7 @@ pub async fn get_friend_invites(
     } else {
         let query = sqlx::query_as!(
             StrippedUser,
-           r#"SELECT users.id AS user_id, nickname, pfp FROM users 
+            r#"SELECT users.id AS user_id, nickname, pfp FROM users 
             JOIN relations rel ON rel.relating_user = users.id 
             WHERE (rel.state, rel.related_user) = ($1, $2)
             ORDER BY users.id DESC

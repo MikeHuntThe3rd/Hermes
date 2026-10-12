@@ -13,7 +13,7 @@ pub enum AuthError {
     Blocked,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum InternalError {
     DbError,
     RedisError,

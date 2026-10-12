@@ -99,7 +99,7 @@ impl IntoResponse for InternalError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal operations in the server failed",
             ),
-            InternalError::NoMatches => (StatusCode::NOT_FOUND, "no row matched the given data"),
+            InternalError::NoMatches => (StatusCode::NO_CONTENT, "no row matched the given data"),
             InternalError::BadRequest => (
                 StatusCode::BAD_REQUEST,
                 "the request body was incorrectly formatted",

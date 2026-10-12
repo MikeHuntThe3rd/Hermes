@@ -120,9 +120,11 @@ pub async fn add_dm(
     state
         .ps_interface
         .select_one::<Uuid, User>((&["id"], &[member_id]))
-        .await.map_err(|e| GenericErr::Internal(e))?;
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
-    let existing_dm_query = sqlx::query_as!(Dm, 
+    let existing_dm_query = sqlx::query_as!(
+        Dm,
         r#"SELECT * FROM dms 
         WHERE (dms.user_a, dms.user_b) = ($1, $2) OR (dms.user_a, dms.user_b) = ($2, $1)
         LIMIT 1"#,
@@ -130,7 +132,8 @@ pub async fn add_dm(
         member_id
     );
 
-    let existing_invite_query = sqlx::query_as!(Dm_Invite, 
+    let existing_invite_query = sqlx::query_as!(
+        Dm_Invite,
         r#"SELECT i.* FROM dm_invites i JOIN dms d ON d.id = i.dm_id
         WHERE (i.recipient = $1 AND d.user_a = $2) OR (i.recipient = $2 AND d.user_a = $1) 
         LIMIT 1"#,
@@ -138,18 +141,29 @@ pub async fn add_dm(
         auth.user_id
     );
 
-    let existing_invite = state.ps_interface.generic_fetch(existing_invite_query)
-    .await.map_err(|e| GenericErr::Internal(e))?;
+    let existing_invite = state
+        .ps_interface
+        .generic_fetch(existing_invite_query)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
-    let existing_dm = state.ps_interface.generic_fetch(existing_dm_query)
-    .await.map_err(|e| GenericErr::Internal(e))?;
+    let existing_dm = state
+        .ps_interface
+        .generic_fetch(existing_dm_query)
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
     if !existing_dm.is_empty() || !existing_invite.is_empty() {
         return Err(GenericErr::Internal(InternalError::DuplicateData));
     }
 
-    let relation = state.ps_interface
-    .select_one::<Uuid, Relation>((&["relating_user", "related_user"],&[member_id, auth.user_id])).await;
+    let relation = state
+        .ps_interface
+        .select_one::<Uuid, Relation>((
+            &["relating_user", "related_user"],
+            &[member_id, auth.user_id],
+        ))
+        .await;
 
     match relation {
         Ok(rel_ok) => {
@@ -157,14 +171,12 @@ pub async fn add_dm(
                 return Err(GenericErr::Auth(AuthError::Blocked));
             }
         }
-        Err(rel_err) => {
-            match rel_err {
-                InternalError::NoMatches => {}
-                _ => {
-                    return Err(GenericErr::Internal(rel_err));
-                }
+        Err(rel_err) => match rel_err {
+            InternalError::NoMatches => {}
+            _ => {
+                return Err(GenericErr::Internal(rel_err));
             }
-        }
+        },
     }
 
     let dm: Dm = state
@@ -177,7 +189,8 @@ pub async fn add_dm(
             },
             false,
         )
-        .await.map_err(|e| GenericErr::Internal(e))?;
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
     let invite = state
         .ps_interface
@@ -192,8 +205,11 @@ pub async fn add_dm(
         .await;
 
     if invite.is_err() {
-        state.ps_interface.delete_many::<Uuid, Dm>(&[dm.id])
-        .await.map_err(|e| GenericErr::Internal(e))?;
+        state
+            .ps_interface
+            .delete_many::<Uuid, Dm>(&[dm.id])
+            .await
+            .map_err(|e| GenericErr::Internal(e))?;
         return Err(GenericErr::Internal(InternalError::DbError));
     }
 
@@ -340,18 +356,28 @@ pub async fn invite_guild_member(
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    let recipient = fetch_guild_member(state.clone(), &guild_id, &data.user_id)
+    let recipient = state
+        .ps_interface
+        .select_many::<Uuid, Guild_Member>(
+            Some((&["guild_id", "member_id"], &[guild_id, data.user_id])),
+            Some(1),
+        )
         .await
-        .map_err(|e| GenericErr::Internal(e))
-        .ok();
-    
+        .map_err(|e| GenericErr::Internal(e))?
+        .into_iter()
+        .next();
 
     if recipient.is_some() {
         return Err(GenericErr::Internal(InternalError::DuplicateData));
     }
 
-    let relation = state.ps_interface
-    .select_one::<Uuid, Relation>((&["relating_user", "related_user"],&[data.user_id, auth.user_id])).await;
+    let relation = state
+        .ps_interface
+        .select_one::<Uuid, Relation>((
+            &["relating_user", "related_user"],
+            &[data.user_id, auth.user_id],
+        ))
+        .await;
 
     match relation {
         Ok(rel_ok) => {
@@ -359,14 +385,12 @@ pub async fn invite_guild_member(
                 return Err(GenericErr::Auth(AuthError::Blocked));
             }
         }
-        Err(rel_err) => {
-            match rel_err {
-                InternalError::NoMatches => {}
-                _ => {
-                    return Err(GenericErr::Internal(rel_err));
-                }
+        Err(rel_err) => match rel_err {
+            InternalError::NoMatches => {}
+            _ => {
+                return Err(GenericErr::Internal(rel_err));
             }
-        }
+        },
     }
 
     let invite = state
@@ -428,13 +452,19 @@ pub async fn create_friend_invite(
 
     let peer_to_caller_relation: Vec<Relation> = state
         .ps_interface
-        .select_many(Some((&["relating_user", "related_user"], &[user_id, auth.user_id])), Some(1))
+        .select_many(
+            Some((&["relating_user", "related_user"], &[user_id, auth.user_id])),
+            Some(1),
+        )
         .await
         .map_err(|e| GenericErr::Internal(e))?;
-    
+
     let caller_to_peer_relation: Vec<Relation> = state
         .ps_interface
-        .select_many(Some((&["relating_user", "related_user"], &[ auth.user_id, user_id])), Some(1))
+        .select_many(
+            Some((&["relating_user", "related_user"], &[auth.user_id, user_id])),
+            Some(1),
+        )
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
