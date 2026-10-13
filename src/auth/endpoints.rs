@@ -1,6 +1,5 @@
 use axum::{Json, extract::State, http::StatusCode};
 use fred::interfaces::KeysInterface;
-use fred::types;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;

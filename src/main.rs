@@ -28,7 +28,7 @@ use tower_http::{
 };
 use uuid::Uuid;
 
-use crate::responses::error_t::InternalError;
+use crate::{responses::error_t::InternalError, types::PLACE_HOLDER_UUID};
 use crate::types::PrivilegeT;
 use auth::endpoints::*;
 use db::PsInterface;
@@ -38,50 +38,40 @@ use types::{AppState, OBJ_PTH_STR, TEMP_PTH_STR};
 use crate::{db::LiteInterface, types::User};
 
 async fn ensure_master_user(state: AppState) {
-    let inf = state.ps_interface;
     let (usr_nm, pswrd) = (
         env::var("M_USERNAME").expect("the variable for the master user's username is expected"),
         env::var("M_PASSWORD").expect("the variable for the master user's password is expected"),
     );
 
-    let user = inf
+    let user = state
+        .ps_interface
         .select_one::<String, User>((
             &["username", "password"],
             &vec![usr_nm.clone(), pswrd.clone()],
         ))
         .await;
-    //TODO: master user logic changes
-    // match user {
-    //     Ok(u) if u.prv != PrivilegeT::Proprietor => {}
-    //     Err(e) if e == InternalError::NoMatches => {}
-    //     Err(e) => {}
-    // }
-    if let Err(error) = user {
-        match error {
-            InternalError::DbError => {
-                panic!("master user querying is expected to succeed");
-            }
 
-            InternalError::NoMatches => {
-                inf.insert_one::<User>(
-                    User {
-                        id: Uuid::new_v4(),
+    let master_user =  User {
+                        id: PLACE_HOLDER_UUID,
                         nickname: "master".to_string(),
                         prv: PrivilegeT::Proprietor,
                         username: usr_nm,
                         password: pswrd,
                         pfp: None,
-                    },
-                    false,
-                )
-                .await
-                .expect("master user inserting is expected to succeed");
-            }
+                    };
 
-            _ => {
-                panic!("unknown error occured while creating master user")
-            }
+    match user {
+        Ok(u) if u.prv != PrivilegeT::Proprietor => {
+            state.ps_interface.delete_many::<Uuid, User>(&[u.id]).await.expect("generic db ops are expected to succeed");
+            state.ps_interface.insert_one(master_user, false).await.expect("generic db ops are expected to succeed");
         }
+        Err(e) if e == InternalError::NoMatches => {
+            state.ps_interface.insert_one(master_user, false).await.expect("generic db ops are expected to succeed");
+        }
+        Err(_) => {
+            panic!("generic db ops are expected to succeed")
+        }
+        _ => {}
     }
 }
 
