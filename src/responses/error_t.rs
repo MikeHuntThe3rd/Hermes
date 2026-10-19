@@ -8,6 +8,7 @@ pub enum AuthError {
     InvalidNickname,
     InvalidPrivilige,
     SelfInvite,
+    SelfOp,
     UserUnreachable,
     NonOwner,
     Blocked,

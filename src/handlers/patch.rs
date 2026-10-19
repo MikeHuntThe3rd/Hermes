@@ -109,36 +109,84 @@ pub async fn update_relation(
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
-    if auth.user_id == user_id {
-        return Err(GenericErr::Auth(AuthError::SelfInvite));
-    }
-
-    let mut rel: Relation = state
-        .ps_interface
-        .select_one((&["relating_user", "related_user"], &[auth.user_id, user_id]))
-        .await
-        .map_err(|e| GenericErr::Internal(e))?;
-
-    match rel.state {
-        RelationT::Blocked => rel.state = RelationT::Friends,
-        RelationT::Friends => rel.state = RelationT::Blocked,
-        RelationT::Pending => {
-            return Err(GenericErr::Auth(AuthError::NonOwner));
-        }
-    }
-
-    state
-        .ps_interface
-        .update_one(rel)
-        .await
-        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
-
-    return Ok(Res {
+    const SUCCESS_RESPONSE: Result<Res<()>, GenericErr> = Ok(Res {
         status: StatusCode::OK,
         success: true,
         msg: String::new(),
         data: None,
     });
+
+    if auth.user_id == user_id {
+        return Err(GenericErr::Auth(AuthError::SelfInvite));
+    }
+
+    let current_relation: Result<Relation, InternalError> = state
+        .ps_interface
+        .select_one((&["relating_user", "related_user"], &[auth.user_id, user_id]))
+        .await;
+    let mut active_relation: Relation;
+
+    match current_relation {
+        Err(e) if e == InternalError::NoMatches => {
+            state
+                .ps_interface
+                .insert_one(
+                    Relation {
+                        relating_user: auth.user_id,
+                        related_user: user_id,
+                        state: RelationT::Blocked,
+                    },
+                    true,
+                )
+                .await
+                .map_err(|e| GenericErr::Internal(e))?;
+            return SUCCESS_RESPONSE;
+        }
+        Err(e) => {
+            return Err(GenericErr::Internal(e));
+        }
+
+        Ok(k) => active_relation = k,
+    }
+
+    active_relation.state = match active_relation.state {
+        RelationT::Blocked => {
+            let reverse_relation: Result<Relation, InternalError> = state
+                .ps_interface
+                .select_one((&["relating_user", "related_user"], &[user_id, auth.user_id]))
+                .await;
+            match reverse_relation {
+                Err(e) if e == InternalError::NoMatches => {
+                    state
+                        .ps_interface
+                        .delete_many::<Uuid, Relation>(&[auth.user_id, user_id])
+                        .await
+                        .map_err(|e| GenericErr::Internal(e))?;
+                    return SUCCESS_RESPONSE;
+                }
+
+                Err(e) => {
+                    return Err(GenericErr::Internal(e));
+                }
+
+                Ok(k) if k.state == RelationT::Pending || k.state == RelationT::Blocked => {
+                    return Err(GenericErr::Auth(AuthError::NonOwner));
+                }
+
+                _ => {}
+            }
+            RelationT::Friends
+        }
+        _ => RelationT::Blocked,
+    };
+
+    state
+        .ps_interface
+        .update_one(active_relation)
+        .await
+        .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
+
+    return SUCCESS_RESPONSE;
 }
 
 pub async fn manage_guild_invite(
@@ -249,7 +297,8 @@ pub async fn manage_friend_invite(
 ) -> Result<Res<()>, InternalError> {
     let mut inv: Relation = state
         .ps_interface
-        .select_one((&["relating_user", "related_user"], &[user_id, auth.user_id])).await?;
+        .select_one((&["relating_user", "related_user"], &[user_id, auth.user_id]))
+        .await?;
 
     if inv.state != RelationT::Pending {
         return Err(InternalError::NoMatches);
@@ -304,8 +353,11 @@ pub async fn update_guild_channel_message(
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    let channel: Channel = state.ps_interface.select_one((&["id", "guild_id"], &[channel_id, guild_id]))
-    .await.map_err(|e| GenericErr::Internal(e))?;
+    let channel: Channel = state
+        .ps_interface
+        .select_one((&["id", "guild_id"], &[channel_id, guild_id]))
+        .await
+        .map_err(|e| GenericErr::Internal(e))?;
 
     let messages_query = sqlx::query_as!(
         Guild_Message,
@@ -398,10 +450,10 @@ pub async fn update_dm_message(
     Path((dm_id, message_id)): Path<(Uuid, i64)>,
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, GenericErr> {
-     if data.message.is_none() && data.file_ids.is_empty() {
+    if data.message.is_none() && data.file_ids.is_empty() {
         return Err(GenericErr::Internal(InternalError::EmptyMessage));
     }
-    
+
     state
         .ps_interface
         .select_one::<Uuid, Dm>((&["id"], &[dm_id]))

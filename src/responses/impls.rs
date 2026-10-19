@@ -55,13 +55,17 @@ impl IntoResponse for AuthError {
                 "provided username does not meet the required 3 character limit",
             ),
             AuthError::SelfInvite => (StatusCode::UNAUTHORIZED, "you cannot invite yourself"),
+            AuthError::SelfOp => (
+                StatusCode::UNAUTHORIZED,
+                "you cannot perform this operation on yourself",
+            ),
             AuthError::UserUnreachable => (
                 StatusCode::FORBIDDEN,
                 "the associated user with this request cannot be reached",
             ),
             AuthError::NonOwner => (
                 StatusCode::FORBIDDEN,
-                "the associated data or state is owned by a different user",
+                "the associated data or state is owned or controlled by a different user",
             ),
             AuthError::Blocked => (
                 StatusCode::FORBIDDEN,

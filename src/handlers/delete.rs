@@ -169,26 +169,16 @@ pub async fn delete_relation(
     Path(user_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
     if auth.user_id == user_id {
-        return Err(GenericErr::Auth(AuthError::SelfInvite));
+        return Err(GenericErr::Auth(AuthError::SelfOp));
     }
-
-    let delete_query = sqlx::query_as!(
-        Relation,
-        r#"DELETE FROM relations
-        WHERE (relating_user = $1 AND related_user = $2)
-        OR (relating_user = $2 AND related_user = $1) 
-        RETURNING relating_user, related_user, state AS "state: RelationT";"#,
-        auth.user_id,
-        user_id
-    );
-
-    let successful_deletes = state
+    //TODO: manage deletio when the reciever is friend or blocked
+    let relation_deletion = state
         .ps_interface
-        .generic_fetch(delete_query)
+        .delete_many::<Uuid, Relation>(&[auth.user_id, user_id])
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
-    if successful_deletes.is_empty() {
+    if relation_deletion.is_empty() {
         return Err(GenericErr::Internal(InternalError::NoMatches));
     }
 
