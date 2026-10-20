@@ -90,7 +90,7 @@ pub type RelationsResponse = StrippedUserResponse;
 
 pub async fn get_initial_dm_invites(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<DmInvitesResponse>, InternalError> {
     return get_dm_invites(auth.user_id, None, state).await;
 }
@@ -98,14 +98,14 @@ pub async fn get_initial_dm_invites(
 pub async fn get_dm_invites_from(
     auth: AuthUser,
     Path(cursor): Path<Uuid>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<DmInvitesResponse>, InternalError> {
     return get_dm_invites(auth.user_id, Some(cursor), state).await;
 }
 
 pub async fn get_initial_dms(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<DmResponse>, InternalError> {
     return get_dms(auth.user_id, None, state).await;
 }
@@ -113,7 +113,7 @@ pub async fn get_initial_dms(
 pub async fn get_dms_from(
     auth: AuthUser,
     Path(cursor): Path<Uuid>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<DmResponse>, InternalError> {
     return get_dms(auth.user_id, Some(cursor), state).await;
 }
@@ -121,7 +121,7 @@ pub async fn get_dms_from(
 pub async fn get_initial_channels(
     auth: AuthUser,
     Path(group_id): Path<Uuid>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<ChannelsResponse>, InternalError> {
     return get_channels(auth.user_id, group_id, None, state).await;
 }
@@ -129,14 +129,14 @@ pub async fn get_initial_channels(
 pub async fn get_channels_from(
     auth: AuthUser,
     Path((group_id, cursor)): Path<(Uuid, Uuid)>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<ChannelsResponse>, InternalError> {
     return get_channels(auth.user_id, group_id, Some(cursor), state).await;
 }
 
 pub async fn get_initial_guilds(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<GuildsResponse>, InternalError> {
     return get_guilds(auth.user_id, None, state).await;
 }
@@ -144,14 +144,14 @@ pub async fn get_initial_guilds(
 pub async fn get_guilds_from(
     auth: AuthUser,
     Path(cursor): Path<Uuid>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<GuildsResponse>, InternalError> {
     return get_guilds(auth.user_id, Some(cursor), state).await;
 }
 
 pub async fn get_initial_guild_invites(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<GuildInvitesResponse>, InternalError> {
     return get_guild_invites(auth.user_id, None, state).await;
 }
@@ -159,7 +159,7 @@ pub async fn get_initial_guild_invites(
 pub async fn get_guild_invites_from(
     auth: AuthUser,
     Path(cursor): Path<Uuid>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<GuildInvitesResponse>, InternalError> {
     return get_guild_invites(auth.user_id, Some(cursor), state).await;
 }
@@ -167,7 +167,7 @@ pub async fn get_guild_invites_from(
 pub async fn get_initial_guild_members(
     auth: AuthUser,
     Path(group_id): Path<Uuid>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<GuildMembersResponse>, InternalError> {
     return get_guild_members(auth.user_id, group_id, None, state).await;
 }
@@ -175,14 +175,14 @@ pub async fn get_initial_guild_members(
 pub async fn get_guild_members_from(
     auth: AuthUser,
     Path((group_id, cursor)): Path<(Uuid, Uuid)>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<GuildMembersResponse>, InternalError> {
     return get_guild_members(auth.user_id, group_id, Some(cursor), state).await;
 }
 
 pub async fn get_initial_friend_invites(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<RelationInvitesResponse>, InternalError> {
     return get_friend_invites(auth.user_id, None, state).await;
 }
@@ -190,14 +190,14 @@ pub async fn get_initial_friend_invites(
 pub async fn get_friend_invites_from(
     auth: AuthUser,
     Path(cursor): Path<Uuid>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<RelationInvitesResponse>, InternalError> {
     return get_friend_invites(auth.user_id, Some(cursor), state).await;
 }
 
 pub async fn get_initial_friends(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<RelationsResponse>, InternalError> {
     return get_friends(auth.user_id, None, state).await;
 }
@@ -205,7 +205,7 @@ pub async fn get_initial_friends(
 pub async fn get_friends_from(
     auth: AuthUser,
     Path(cursor): Path<Uuid>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<RelationsResponse>, InternalError> {
     return get_friends(auth.user_id, Some(cursor), state).await;
 }
@@ -213,7 +213,7 @@ pub async fn get_friends_from(
 pub async fn get_initial_dm_messages(
     auth: AuthUser,
     Path(dm_id): Path<Uuid>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<DmMsgResponse>, InternalError> {
     return get_dm_messages(auth.user_id, dm_id, None, state).await;
 }
@@ -221,7 +221,7 @@ pub async fn get_initial_dm_messages(
 pub async fn get_dm_messages_from(
     auth: AuthUser,
     Path((dm_id, cursor)): Path<(Uuid, i64)>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<DmMsgResponse>, InternalError> {
     return get_dm_messages(auth.user_id, dm_id, Some(cursor), state).await;
 }
@@ -229,7 +229,7 @@ pub async fn get_dm_messages_from(
 pub async fn get_initial_channel_messages(
     auth: AuthUser,
     Path((guild_id, channel_id)): Path<(Uuid, Uuid)>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<GuildMsgResponse>, InternalError> {
     return get_guild_channel_messages(auth.user_id, guild_id, channel_id, None, state).await;
 }
@@ -237,7 +237,7 @@ pub async fn get_initial_channel_messages(
 pub async fn get_channel_messages_from(
     auth: AuthUser,
     Path((guild_id, channel_id, cursor)): Path<(Uuid, Uuid, i64)>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Res<GuildMsgResponse>, InternalError> {
     return get_guild_channel_messages(auth.user_id, guild_id, channel_id, Some(cursor), state)
         .await;
@@ -245,11 +245,11 @@ pub async fn get_channel_messages_from(
 
 pub async fn pull(
     _auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Path(object_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, InternalError> {
     let obj: Object = state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, Object>((Object::id_columns(), &[object_id]))
         .await?;
 
@@ -265,7 +265,7 @@ pub async fn pull(
 async fn get_dms(
     user_id: Uuid,
     cursor: Option<Uuid>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<DmResponse>, InternalError> {
     let dms: Vec<Dm> = if let Some(pin) = cursor {
         let query = sqlx::query_as!(
@@ -279,7 +279,7 @@ async fn get_dms(
             pin
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     } else {
         let query = sqlx::query_as!(
             Dm,
@@ -291,7 +291,7 @@ async fn get_dms(
             user_id
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     };
 
     if dms.is_empty() && cursor.is_none() {
@@ -320,7 +320,7 @@ async fn get_dms(
 async fn get_friends(
     user_id: Uuid,
     cursor: Option<Uuid>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<RelationsResponse>, InternalError> {
     let friends: Vec<StrippedUser> = if let Some(pin) = cursor {
         let query = sqlx::query_as!(
@@ -335,7 +335,7 @@ async fn get_friends(
             pin
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     } else {
         let query = sqlx::query_as!(
             StrippedUser,
@@ -348,7 +348,7 @@ async fn get_friends(
             RelationT::Friends as RelationT
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     };
 
     if friends.is_empty() && cursor.is_none() {
@@ -377,7 +377,7 @@ async fn get_friends(
 async fn get_guilds(
     user_id: Uuid,
     cursor: Option<Uuid>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<GuildsResponse>, InternalError> {
     let guilds: Vec<Guild> = if let Some(pin) = cursor {
         let query = sqlx::query_as!(
@@ -397,7 +397,7 @@ async fn get_guilds(
             pin
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     } else {
         let query = sqlx::query_as!(
             Guild,
@@ -414,7 +414,7 @@ async fn get_guilds(
             user_id
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     };
 
     if guilds.is_empty() && cursor.is_none() {
@@ -444,7 +444,7 @@ async fn get_channels(
     user_id: Uuid,
     guild_id: Uuid,
     cursor: Option<Uuid>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<ChannelsResponse>, InternalError> {
     fetch_guild_member(state.clone(), &guild_id, &user_id).await?;
 
@@ -457,7 +457,7 @@ async fn get_channels(
             pin
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     } else {
         let query = sqlx::query_as!(
             StrippedChannel,
@@ -466,7 +466,7 @@ async fn get_channels(
             guild_id
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     };
 
     if channels.is_empty() && cursor.is_none() {
@@ -496,10 +496,10 @@ async fn get_guild_members(
     user_id: Uuid,
     guild_id: Uuid,
     cursor: Option<Uuid>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<GuildMembersResponse>, InternalError> {
     state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, Guild>((&["id"], &[guild_id]))
         .await?;
 
@@ -518,7 +518,7 @@ async fn get_guild_members(
             pin
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     } else {
         let query = sqlx::query_as!(
             StrippedMember,
@@ -531,7 +531,7 @@ async fn get_guild_members(
             guild_id
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     };
 
     if members.is_empty() && cursor.is_none() {
@@ -562,11 +562,11 @@ async fn get_guild_channel_messages(
     guild_id: Uuid,
     channel_id: Uuid,
     cursor: Option<i64>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<GuildMsgResponse>, InternalError> {
     fetch_guild_member(state.clone(), &guild_id, &user_id).await?;
     state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, Channel>((&["id", "guild_id"], &[channel_id, guild_id]))
         .await?;
 
@@ -590,7 +590,7 @@ async fn get_guild_channel_messages(
             pin
         );
 
-        state.ps_interface.generic_fetch(messages_query).await?
+        state.pg_interface.generic_fetch(messages_query).await?
     } else {
         let messages_query = sqlx::query_as!(
             GuildChannelMessage,
@@ -610,7 +610,7 @@ async fn get_guild_channel_messages(
             channel_id
         );
 
-        state.ps_interface.generic_fetch(messages_query).await?
+        state.pg_interface.generic_fetch(messages_query).await?
     };
 
     if messages.is_empty() && cursor.is_none() {
@@ -640,7 +640,7 @@ async fn get_dm_messages(
     user_id: Uuid,
     dm_id: Uuid,
     cursor: Option<i64>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<DmMsgResponse>, InternalError> {
     let member_query = sqlx::query_as!(
         Dm,
@@ -650,7 +650,7 @@ async fn get_dm_messages(
     );
 
     state
-        .ps_interface
+        .pg_interface
         .generic_fetch(member_query)
         .await?
         .into_iter()
@@ -677,7 +677,7 @@ async fn get_dm_messages(
             pin
         );
 
-        state.ps_interface.generic_fetch(messages_query).await?
+        state.pg_interface.generic_fetch(messages_query).await?
     } else {
         let messages_query = sqlx::query_as!(
             DmMessage,
@@ -697,7 +697,7 @@ async fn get_dm_messages(
             dm_id
         );
 
-        state.ps_interface.generic_fetch(messages_query).await?
+        state.pg_interface.generic_fetch(messages_query).await?
     };
 
     if messages.is_empty() && cursor.is_none() {
@@ -726,7 +726,7 @@ async fn get_dm_messages(
 async fn get_guild_invites(
     user_id: Uuid,
     cursor: Option<Uuid>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<GuildInvitesResponse>, InternalError> {
     let invites: Vec<Guild_Invite> = if let Some(pin) = cursor {
         let query = sqlx::query_as!(
@@ -739,7 +739,7 @@ async fn get_guild_invites(
             pin
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     } else {
         let query = sqlx::query_as!(
             Guild_Invite,
@@ -750,7 +750,7 @@ async fn get_guild_invites(
             user_id
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     };
 
     if invites.is_empty() && cursor.is_none() {
@@ -779,7 +779,7 @@ async fn get_guild_invites(
 async fn get_dm_invites(
     user_id: Uuid,
     cursor: Option<Uuid>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<DmInvitesResponse>, InternalError> {
     let invites: Vec<Dm_Invite> = if let Some(pin) = cursor {
         let query = sqlx::query_as!(
@@ -791,7 +791,7 @@ async fn get_dm_invites(
             pin
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     } else {
         let query = sqlx::query_as!(
             Dm_Invite,
@@ -801,7 +801,7 @@ async fn get_dm_invites(
             user_id
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     };
 
     if invites.is_empty() && cursor.is_none() {
@@ -830,7 +830,7 @@ async fn get_dm_invites(
 pub async fn get_friend_invites(
     user_id: Uuid,
     cursor: Option<Uuid>,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<Res<RelationInvitesResponse>, InternalError> {
     let invites: Vec<StrippedUser> = if let Some(pin) = cursor {
         let query = sqlx::query_as!(
@@ -845,7 +845,7 @@ pub async fn get_friend_invites(
             pin
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     } else {
         let query = sqlx::query_as!(
             StrippedUser,
@@ -858,7 +858,7 @@ pub async fn get_friend_invites(
             user_id
         );
 
-        state.ps_interface.generic_fetch(query).await?
+        state.pg_interface.generic_fetch(query).await?
     };
 
     if invites.is_empty() && cursor.is_none() {

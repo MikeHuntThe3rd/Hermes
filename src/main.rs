@@ -22,29 +22,29 @@ use fred::{
         config::{Config, TcpConfig},
     },
 };
+use sqlx::postgres::PgConnectOptions;
 use tower_http::{
     cors::{Any, CorsLayer},
     services::ServeDir,
 };
 use uuid::Uuid;
 
-use crate::{responses::error_t::InternalError, types::PLACE_HOLDER_UUID};
+use crate::{db::PgInterface, responses::error_t::InternalError, types::PLACE_HOLDER_UUID};
 use crate::types::PrivilegeT;
 use auth::endpoints::*;
-use db::PsInterface;
 use handlers::{delete::*, get::*, patch::*, post::*, ws::*};
 use types::{AppState, OBJ_PTH_STR, TEMP_PTH_STR};
 
 use crate::{db::LiteInterface, types::User};
 
-async fn ensure_master_user(state: AppState) {
+async fn ensure_master_user(mut state: AppState) {
     let (usr_nm, pswrd) = (
         env::var("M_USERNAME").expect("the variable for the master user's username is expected"),
         env::var("M_PASSWORD").expect("the variable for the master user's password is expected"),
     );
 
     let user = state
-        .ps_interface
+        .pg_interface
         .select_one::<String, User>((
             &["username", "password"],
             &vec![usr_nm.clone(), pswrd.clone()],
@@ -62,11 +62,11 @@ async fn ensure_master_user(state: AppState) {
 
     match user {
         Ok(u) if u.prv != PrivilegeT::Proprietor => {
-            state.ps_interface.delete_many::<Uuid, User>(&[u.id]).await.expect("generic db ops are expected to succeed");
-            state.ps_interface.insert_one(master_user, false).await.expect("generic db ops are expected to succeed");
+            state.pg_interface.delete_many::<Uuid, User>(&[u.id]).await.expect("generic db ops are expected to succeed");
+            state.pg_interface.insert_one(master_user, false).await.expect("generic db ops are expected to succeed");
         }
         Err(e) if e == InternalError::NoMatches => {
-            state.ps_interface.insert_one(master_user, false).await.expect("generic db ops are expected to succeed");
+            state.pg_interface.insert_one(master_user, false).await.expect("generic db ops are expected to succeed");
         }
         Err(_) => {
             panic!("generic db ops are expected to succeed")
@@ -102,12 +102,19 @@ async fn setup() -> AppState {
         Ok(())
     });
 
+    let opt = PgConnectOptions::new()
+        .socket("/run/postgresql")
+        .username(
+            &std::env::var("PS_USERNAME").expect("a PS_USERNAME enviroment variable is expected"),
+        )
+        .database("records_ps");
+
     let state = AppState {
         jwt_secret: env::var("JWT_SECRET")
             .expect("the jwt secret is expected to exist")
             .into_bytes()
             .into(),
-        ps_interface: PsInterface::new()
+        pg_interface: PgInterface::new(opt)
             .await
             .expect("failed to create the postgres db connection"),
         lite_interface: LiteInterface::new()

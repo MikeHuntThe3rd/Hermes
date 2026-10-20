@@ -52,11 +52,11 @@ pub struct Chnl {
 
 pub async fn add_guild(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Json(data): Json<Grp>,
 ) -> Result<Res<()>, InternalError> {
     let guild = state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Guild {
                 id: PLACE_HOLDER_UUID,
@@ -68,7 +68,7 @@ pub async fn add_guild(
         .await?;
 
     let member = state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Guild_Member {
                 guild_id: guild.id,
@@ -80,7 +80,7 @@ pub async fn add_guild(
         .await;
 
     let channel = state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Channel {
                 id: PLACE_HOLDER_UUID,
@@ -94,7 +94,7 @@ pub async fn add_guild(
 
     if member.is_err() || channel.is_err() {
         state
-            .ps_interface
+            .pg_interface
             .delete_many::<Uuid, Guild>(&[guild.id])
             .await?;
         return Err(InternalError::DbError);
@@ -110,7 +110,7 @@ pub async fn add_guild(
 
 pub async fn add_dm(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Path(member_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
     if auth.user_id == member_id {
@@ -118,7 +118,7 @@ pub async fn add_dm(
     }
 
     state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, User>((&["id"], &[member_id]))
         .await
         .map_err(|e| GenericErr::Internal(e))?;
@@ -142,13 +142,13 @@ pub async fn add_dm(
     );
 
     let existing_invite = state
-        .ps_interface
+        .pg_interface
         .generic_fetch(existing_invite_query)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
     let existing_dm = state
-        .ps_interface
+        .pg_interface
         .generic_fetch(existing_dm_query)
         .await
         .map_err(|e| GenericErr::Internal(e))?;
@@ -158,7 +158,7 @@ pub async fn add_dm(
     }
 
     let relation = state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, Relation>((
             &["relating_user", "related_user"],
             &[member_id, auth.user_id],
@@ -180,7 +180,7 @@ pub async fn add_dm(
     }
 
     let dm: Dm = state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Dm {
                 id: PLACE_HOLDER_UUID,
@@ -193,7 +193,7 @@ pub async fn add_dm(
         .map_err(|e| GenericErr::Internal(e))?;
 
     let invite = state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Dm_Invite {
                 id: PLACE_HOLDER_UUID,
@@ -206,7 +206,7 @@ pub async fn add_dm(
 
     if invite.is_err() {
         state
-            .ps_interface
+            .pg_interface
             .delete_many::<Uuid, Dm>(&[dm.id])
             .await
             .map_err(|e| GenericErr::Internal(e))?;
@@ -223,7 +223,7 @@ pub async fn add_dm(
 
 pub async fn add_dm_message(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Path(dm_id): Path<Uuid>,
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, GenericErr> {
@@ -232,7 +232,7 @@ pub async fn add_dm_message(
     }
 
     let dm: Dm = state
-        .ps_interface
+        .pg_interface
         .select_one((&["id"], &[dm_id]))
         .await
         .map_err(|e| GenericErr::Internal(e))?;
@@ -242,7 +242,7 @@ pub async fn add_dm_message(
     }
 
     let msg: Dm_Message = state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Dm_Message {
                 id: 0,
@@ -264,11 +264,11 @@ pub async fn add_dm_message(
         })
         .collect();
 
-    let msg_objs_insert = state.ps_interface.insert_many(&msg_objs, true).await;
+    let msg_objs_insert = state.pg_interface.insert_many(&msg_objs, true).await;
 
     if msg_objs_insert.is_err() {
         state
-            .ps_interface
+            .pg_interface
             .delete_many::<i64, Dm_Message>(&[msg.id])
             .await
             .map_err(|e| GenericErr::Internal(e))?;
@@ -286,7 +286,7 @@ pub async fn add_dm_message(
 
 pub async fn add_guild_channel_message(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Path((guild_id, channel_id)): Path<(Uuid, Uuid)>,
     Json(data): Json<Msg>,
 ) -> Result<Res<()>, InternalError> {
@@ -297,12 +297,12 @@ pub async fn add_guild_channel_message(
     fetch_guild_member(state.clone(), &guild_id, &auth.user_id).await?;
 
     state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, Channel>((&["id", "guild_id"], &[channel_id, guild_id]))
         .await?;
 
     let msg = state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Guild_Message {
                 id: 0,
@@ -323,11 +323,11 @@ pub async fn add_guild_channel_message(
         })
         .collect();
 
-    let msg_objs_insert = state.ps_interface.insert_many(&msg_objs, true).await;
+    let msg_objs_insert = state.pg_interface.insert_many(&msg_objs, true).await;
 
     if msg_objs_insert.is_err() {
         state
-            .ps_interface
+            .pg_interface
             .delete_many::<i64, Guild_Message>(&[msg.id])
             .await?;
 
@@ -344,7 +344,7 @@ pub async fn add_guild_channel_message(
 
 pub async fn invite_guild_member(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Path(guild_id): Path<Uuid>,
     Json(data): Json<GrpInv>,
 ) -> Result<Res<()>, GenericErr> {
@@ -357,7 +357,7 @@ pub async fn invite_guild_member(
         .map_err(|e| GenericErr::Internal(e))?;
 
     let recipient = state
-        .ps_interface
+        .pg_interface
         .select_many::<Uuid, Guild_Member>(
             Some((&["guild_id", "member_id"], &[guild_id, data.user_id])),
             Some(1),
@@ -372,7 +372,7 @@ pub async fn invite_guild_member(
     }
 
     let relation = state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, Relation>((
             &["relating_user", "related_user"],
             &[data.user_id, auth.user_id],
@@ -394,7 +394,7 @@ pub async fn invite_guild_member(
     }
 
     let invite = state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, Guild_Invite>((&["guild_id", "recipient"], &[guild_id, data.user_id]))
         .await
         .map_err(|e| GenericErr::Internal(e));
@@ -404,7 +404,7 @@ pub async fn invite_guild_member(
     }
 
     state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, User>((&["id"], &[data.user_id]))
         .await
         .map_err(|e| GenericErr::Internal(e))?;
@@ -414,7 +414,7 @@ pub async fn invite_guild_member(
     }
 
     state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Guild_Invite {
                 id: PLACE_HOLDER_UUID,
@@ -437,7 +437,7 @@ pub async fn invite_guild_member(
 
 pub async fn create_friend_invite(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Res<()>, GenericErr> {
     if auth.user_id == user_id {
@@ -445,13 +445,13 @@ pub async fn create_friend_invite(
     }
 
     state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, User>((&["id"], &[user_id]))
         .await
         .map_err(|e| GenericErr::Internal(e))?;
 
     let peer_to_caller_relation: Vec<Relation> = state
-        .ps_interface
+        .pg_interface
         .select_many(
             Some((&["relating_user", "related_user"], &[user_id, auth.user_id])),
             Some(1),
@@ -460,7 +460,7 @@ pub async fn create_friend_invite(
         .map_err(|e| GenericErr::Internal(e))?;
 
     let caller_to_peer_relation: Vec<Relation> = state
-        .ps_interface
+        .pg_interface
         .select_many(
             Some((&["relating_user", "related_user"], &[auth.user_id, user_id])),
             Some(1),
@@ -491,7 +491,7 @@ pub async fn create_friend_invite(
     }
 
     state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Relation {
                 relating_user: auth.user_id,
@@ -513,11 +513,11 @@ pub async fn create_friend_invite(
 
 pub async fn create_invite(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Json(data): Json<PrivLevel>,
 ) -> Result<Res<InvJwt>, GenericErr> {
     let user: User = state
-        .ps_interface
+        .pg_interface
         .select_one((&["id"], &vec![auth.user_id]))
         .await
         .map_err(|_| GenericErr::Internal(InternalError::DbError))?;
@@ -542,7 +542,7 @@ pub async fn create_invite(
 
 pub async fn add_guild_channel(
     auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Path(guild_id): Path<Uuid>,
     Json(data): Json<Chnl>,
 ) -> Result<Res<()>, GenericErr> {
@@ -555,7 +555,7 @@ pub async fn add_guild_channel(
     }
 
     state
-        .ps_interface
+        .pg_interface
         .insert_one(
             Channel {
                 id: PLACE_HOLDER_UUID,
@@ -578,7 +578,7 @@ pub async fn add_guild_channel(
 
 pub async fn upload(
     _auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     mut data: Multipart,
 ) -> Result<Res<ObjectIds>, InternalError> {
     let match_err = |status: StatusCode, rm: Option<String>| -> InternalError {
@@ -638,7 +638,7 @@ pub async fn upload(
         let hash = hex::encode(hasher.finalize());
 
         let matches: Option<Object> = state
-            .ps_interface
+            .pg_interface
             .select_many::<&str, Object>(Some((&["hash"], &[&hash])), Some(1))
             .await
             .map_err(|_| cleanup_err(temp_path.clone(), InternalError::DbError))?
@@ -688,7 +688,7 @@ pub async fn upload(
         };
 
         let obj: Object = state
-            .ps_interface
+            .pg_interface
             .insert_one(new_obj, false)
             .await
             .map_err(|_| {

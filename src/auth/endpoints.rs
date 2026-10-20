@@ -40,11 +40,11 @@ pub struct SignupCred {
 }
 
 pub async fn login(
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Json(data): Json<LoginCred>,
 ) -> Result<Res<UserTokenObj>, GenericErr> {
     let user: User = state
-        .ps_interface
+        .pg_interface
         .select_one((
             &vec!["username", "password"],
             &vec![&data.username, &data.password],
@@ -80,7 +80,7 @@ pub async fn login(
 }
 
 pub async fn refresh(
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Json(data): Json<RefreshBody>,
 ) -> Result<Res<TokenPair>, GenericErr> {
     let tkn_data = decode::<Claims>(
@@ -106,7 +106,7 @@ pub async fn refresh(
     }
 
     state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, User>((&["id"], &[tkn_data.claims.sub]))
         .await
         .map_err(|e| GenericErr::Internal(e))?;
@@ -152,7 +152,7 @@ pub async fn refresh(
 
 pub async fn sign_up(
     auth: AuthInvite,
-    state: State<AppState>,
+    mut state: State<AppState>,
     Json(data): Json<SignupCred>,
 ) -> Result<Res<UserTokenObj>, GenericErr> {
     let key = format!("{INVITES_BLACKLIST_STR}{}", auth.claims.jti);
@@ -168,7 +168,7 @@ pub async fn sign_up(
     }
 
     let user: User = state
-        .ps_interface
+        .pg_interface
         .insert_one(
             User {
                 id: PLACE_HOLDER_UUID,

@@ -240,7 +240,7 @@ type UserId = Uuid;
 #[derive(Clone)]
 pub struct AppState {
     pub jwt_secret: Arc<[u8]>,
-    pub ps_interface: PsInterface,
+    pub pg_interface: PgInterface<DbPool>,
     pub lite_interface: LiteInterface,
     pub redis_client: Client,
     pub pending_calls: Arc<DashMap<CallId, Senders>>,
