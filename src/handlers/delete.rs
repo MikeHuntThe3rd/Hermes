@@ -171,9 +171,11 @@ pub async fn delete_relation(
     if auth.user_id == user_id {
         return Err(GenericErr::Auth(AuthError::SelfOp));
     }
-    //TODO: manage deletio when the reciever is friend or blocked
-    let relation_deletion = state
-        .pg_interface
+
+    let mut tr = state.pg_interface.begin_transaction()
+    .await.map_err(|e| GenericErr::Internal(e))?;
+     
+    let relation_deletion = tr
         .delete_many::<Uuid, Relation>(&[auth.user_id, user_id])
         .await
         .map_err(|e| GenericErr::Internal(e))?;
@@ -181,6 +183,17 @@ pub async fn delete_relation(
     if relation_deletion.is_empty() {
         return Err(GenericErr::Internal(InternalError::NoMatches));
     }
+
+    let peer_to_caller_relation: Relation = tr.select_one((&["relating_user", "related_user"], &[user_id, auth.user_id]))
+    .await.map_err(|e| GenericErr::Internal(e))?;
+
+    if peer_to_caller_relation.state != RelationT::Blocked {
+        tr.delete_many::<Uuid, Relation>(&[user_id, auth.user_id])
+        .await.map_err(|e| GenericErr::Internal(e))?;
+    }
+
+    tr.commit()
+    .await.map_err(|e| GenericErr::Internal(e))?;
 
     return Ok(Res {
         status: StatusCode::OK,

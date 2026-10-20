@@ -305,14 +305,15 @@ pub async fn manage_friend_invite(
     }
 
     if data.accept {
+        let mut tr = state.pg_interface.begin_transaction().await?;
         inv.state = RelationT::Friends;
-        state
-            .pg_interface
+
+        tr
             .update_one(inv)
             .await
             .map_err(|_| InternalError::DbError)?;
-        state
-            .pg_interface
+
+        tr
             .insert_one(
                 Relation {
                     relating_user: auth.user_id,
@@ -323,6 +324,8 @@ pub async fn manage_friend_invite(
             )
             .await
             .map_err(|_| InternalError::DbError)?;
+
+        tr.commit().await?;
     } else {
         state
             .pg_interface

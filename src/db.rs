@@ -41,18 +41,18 @@ impl Connect for DbPool {
 }
 
 impl PgInterface<DbPool> {
-    async fn begin_transaction(&mut self) -> Result<DbTransaction, InternalError> {
-        return Ok(DbTransaction {
+    pub async fn begin_transaction(&mut self) -> Result<PgInterface<DbTransaction>, InternalError> {
+        return Ok(PgInterface { connector: DbTransaction {
             conn: self
                 .connector
                 .pool
                 .begin()
                 .await
                 .map_err(|_| InternalError::DbError)?,
-        });
+        } });
     }
 
-    pub async fn new(opt: PgConnectOptions) -> Result<Self, sqlx::Error> {
+    pub async fn new(opt: PgConnectOptions) -> Result<PgInterface<DbPool>, sqlx::Error> {
         let conn_pool = PgPoolOptions::new()
             .max_connections(20)
             .connect_with(opt)
@@ -80,7 +80,7 @@ impl<'t> Connect for DbTransaction<'t> {
 }
 
 impl<'t> PgInterface<DbTransaction<'t>> {
-    async fn begin_nested_transaction(&mut self) -> Result<DbTransaction, InternalError> {
+    pub async fn begin_nested_transaction(&mut self) -> Result<DbTransaction, InternalError> {
         return Ok(DbTransaction {
             conn: self
                 .connector
@@ -91,7 +91,7 @@ impl<'t> PgInterface<DbTransaction<'t>> {
         });
     }
 
-    async fn commit(self) -> Result<(), InternalError> {
+    pub async fn commit(self) -> Result<(), InternalError> {
         return self
             .connector
             .conn
@@ -100,7 +100,7 @@ impl<'t> PgInterface<DbTransaction<'t>> {
             .map_err(|_| InternalError::DbError);
     }
 
-    async fn rollback(self) -> Result<(), InternalError> {
+    pub async fn rollback(self) -> Result<(), InternalError> {
         return self
             .connector
             .conn
