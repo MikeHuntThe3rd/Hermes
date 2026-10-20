@@ -1,40 +1,117 @@
+use std::ops::DerefMut;
+
 use crate::{logging::Logs, responses::error_t::InternalError, types::*};
 use sqlx::{
-    Encode, FromRow, IntoArguments, Pool, Postgres, QueryBuilder, Sqlite,
+    Acquire, Encode, FromRow, IntoArguments, PgConnection, Pool, Postgres, QueryBuilder, Sqlite,
+    Transaction,
+    pool::PoolConnection,
     postgres::{PgArguments, PgConnectOptions, PgPoolOptions, PgRow},
     query::Query,
     sqlite::{self, SqliteConnectOptions},
 };
 
+trait Connect {
+    type Conn<'a>: DerefMut<Target = PgConnection> + Send
+    where
+        Self: 'a;
+
+    async fn conn(&mut self) -> Result<Self::Conn<'_>, InternalError>;
+}
+
 #[derive(Clone)]
-pub struct PsInterface {
+pub struct PgInterface<C> {
+    connector: C,
+}
+
+#[derive(Clone)]
+pub struct DbPool {
     pool: Pool<Postgres>,
 }
 
-#[derive(Clone)]
-pub struct LiteInterface {
-    _conn: Pool<Sqlite>,
+impl Connect for DbPool {
+    type Conn<'a> = PoolConnection<Postgres>;
+
+    async fn conn(&mut self) -> Result<Self::Conn<'_>, InternalError> {
+        return self
+            .pool
+            .acquire()
+            .await
+            .map_err(|_| InternalError::DbError);
+    }
 }
 
-impl PsInterface {
-    pub async fn new() -> Result<PsInterface, sqlx::Error> {
-        let opt = PgConnectOptions::new()
-            .socket("/run/postgresql")
-            .username(
-                &std::env::var("PS_USERNAME")
-                    .expect("a PS_USERNAME enviroment variable is expected"),
-            )
-            .database("records_ps");
+impl PgInterface<DbPool> {
+    async fn begin_transaction(&mut self) -> Result<DbTransaction, InternalError> {
+        return Ok(DbTransaction {
+            conn: self
+                .connector
+                .pool
+                .begin()
+                .await
+                .map_err(|_| InternalError::DbError)?,
+        });
+    }
 
+    pub async fn new(opt: PgConnectOptions) -> Result<Self, sqlx::Error> {
         let conn_pool = PgPoolOptions::new()
             .max_connections(20)
             .connect_with(opt)
             .await?;
 
-        return Ok(PsInterface { pool: conn_pool });
+        return Ok(Self {
+            connector: DbPool { pool: conn_pool },
+        });
+    }
+}
+
+pub struct DbTransaction<'t> {
+    conn: Transaction<'t, Postgres>,
+}
+
+impl<'t> Connect for DbTransaction<'t> {
+    type Conn<'a>
+        = &'a mut PgConnection
+    where
+        Self: 'a;
+
+    async fn conn(&mut self) -> Result<Self::Conn<'_>, InternalError> {
+        return Ok(&mut *self.conn);
+    }
+}
+
+impl<'t> PgInterface<DbTransaction<'t>> {
+    async fn begin_nested_transaction(&mut self) -> Result<DbTransaction, InternalError> {
+        return Ok(DbTransaction {
+            conn: self
+                .connector
+                .conn
+                .begin()
+                .await
+                .map_err(|_| InternalError::DbError)?,
+        });
     }
 
-    pub async fn insert_one<T>(&self, data: T, insert_all: bool) -> Result<T, InternalError>
+    async fn commit(self) -> Result<(), InternalError> {
+        return self
+            .connector
+            .conn
+            .commit()
+            .await
+            .map_err(|_| InternalError::DbError);
+    }
+
+    async fn rollback(self) -> Result<(), InternalError> {
+        return self
+            .connector
+            .conn
+            .rollback()
+            .await
+            .map_err(|_| InternalError::DbError);
+    }
+}
+
+impl<C: Connect> PgInterface<C> {
+    pub async fn insert_one<T>(&mut self, data: T, insert_all: bool) -> Result<T, InternalError>
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
@@ -47,13 +124,15 @@ impl PsInterface {
     }
 
     pub async fn insert_many<T>(
-        &self,
+        &mut self,
         data: &[T],
         insert_all: bool,
     ) -> Result<Vec<T>, InternalError>
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
+        let mut conn = self.connector.conn().await?;
+
         if data.is_empty() {
             let _msg = sqlx::Error::InvalidArgument("cant form a query without data".to_string());
             return Err(InternalError::DbError);
@@ -100,7 +179,7 @@ impl PsInterface {
         }
 
         let res = query
-            .fetch_all(&self.pool)
+            .fetch_all(&mut *conn)
             .await
             .map_err(|_| InternalError::DbError)?;
 
@@ -112,10 +191,12 @@ impl PsInterface {
         Ok(res)
     }
 
-    pub async fn update_one<T>(&self, data: T) -> Result<T, InternalError>
+    pub async fn update_one<T>(&mut self, data: T) -> Result<T, InternalError>
     where
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
+        let mut conn = self.connector.conn().await?;
+
         let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("UPDATE ");
         sql.push(T::table_name()).push(" SET (");
 
@@ -149,17 +230,19 @@ impl PsInterface {
 
         let query = data.bind_values(sql.build_query_as::<T>(), BindVal::ALL);
         let res = query
-            .fetch_one(&self.pool)
+            .fetch_one(&mut *conn)
             .await
             .map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 
-    pub async fn delete_many<I, T>(&self, id_s: &[I]) -> Result<Vec<T>, InternalError>
+    pub async fn delete_many<I, T>(&mut self, id_s: &[I]) -> Result<Vec<T>, InternalError>
     where
         I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>,
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
+        let mut conn = self.connector.conn().await?;
+
         let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("DELETE FROM ");
         sql.push(T::table_name()).push(" WHERE (");
 
@@ -182,13 +265,13 @@ impl PsInterface {
             query = query.bind(val);
         }
         let res = query
-            .fetch_all(&self.pool)
+            .fetch_all(&mut *conn)
             .await
             .map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 
-    pub async fn select_one<I, T>(&self, id_s: (&[&str], &[I])) -> Result<T, InternalError>
+    pub async fn select_one<I, T>(&mut self, id_s: (&[&str], &[I])) -> Result<T, InternalError>
     where
         I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>,
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
@@ -202,7 +285,7 @@ impl PsInterface {
     }
 
     pub async fn select_many<I, T>(
-        &self,
+        &mut self,
         id_s: Option<(&[&str], &[I])>,
         limit: Option<i32>,
     ) -> Result<Vec<T>, InternalError>
@@ -210,6 +293,8 @@ impl PsInterface {
         I: for<'q> Encode<'q, Postgres> + sqlx::Type<sqlx::Postgres>,
         T: Bindable + for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
+        let mut conn = self.connector.conn().await?;
+
         let mut sql: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM ");
         sql.push(T::table_name());
 
@@ -251,25 +336,26 @@ impl PsInterface {
 
         let res = sql
             .build_query_as::<T>()
-            .fetch_all(&self.pool)
+            .fetch_all(&mut *conn)
             .await
             .map_err(|_| InternalError::DbError)?;
         Ok(res)
     }
 
     pub async fn generic_exec(
-        &self,
+        &mut self,
         query: Query<'_, Postgres, PgArguments>,
     ) -> Result<(), InternalError> {
+        let mut conn = self.connector.conn().await?;
         query
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await
             .map_err(|_| InternalError::DbError)?;
         Ok(())
     }
 
     pub async fn generic_fetch<F, O, A>(
-        &self,
+        &mut self,
         query: sqlx::query::Map<'_, Postgres, F, A>,
     ) -> Result<Vec<O>, InternalError>
     where
@@ -277,11 +363,17 @@ impl PsInterface {
         O: Send + Unpin,
         A: Send + IntoArguments<Postgres>,
     {
+        let mut conn = self.connector.conn().await?;
         query
-            .fetch_all(&self.pool)
+            .fetch_all(&mut *conn)
             .await
             .map_err(|_| InternalError::DbError)
     }
+}
+
+#[derive(Clone)]
+pub struct LiteInterface {
+    _conn: Pool<Sqlite>,
 }
 
 impl LiteInterface {

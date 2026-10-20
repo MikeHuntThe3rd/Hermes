@@ -22,23 +22,23 @@ use fred::{
         config::{Config, TcpConfig},
     },
 };
+use sqlx::postgres::PgConnectOptions;
 use tower_http::{
     cors::{Any, CorsLayer},
     services::ServeDir,
 };
 use uuid::Uuid;
 
-use crate::responses::error_t::InternalError;
 use crate::types::PrivilegeT;
+use crate::{db::PgInterface, responses::error_t::InternalError};
 use auth::endpoints::*;
-use db::PsInterface;
 use handlers::{delete::*, get::*, patch::*, post::*, ws::*};
 use types::{AppState, OBJ_PTH_STR, TEMP_PTH_STR};
 
 use crate::{db::LiteInterface, types::User};
 
 async fn ensure_master_user(state: AppState) {
-    let inf = state.ps_interface;
+    let mut inf = state.pg_interface;
     let (usr_nm, pswrd) = (
         env::var("M_USERNAME").expect("the variable for the master user's username is expected"),
         env::var("M_PASSWORD").expect("the variable for the master user's password is expected"),
@@ -112,12 +112,19 @@ async fn setup() -> AppState {
         Ok(())
     });
 
+    let opt = PgConnectOptions::new()
+        .socket("/run/postgresql")
+        .username(
+            &std::env::var("PS_USERNAME").expect("a PS_USERNAME enviroment variable is expected"),
+        )
+        .database("records_ps");
+
     let state = AppState {
         jwt_secret: env::var("JWT_SECRET")
             .expect("the jwt secret is expected to exist")
             .into_bytes()
             .into(),
-        ps_interface: PsInterface::new()
+        pg_interface: PgInterface::new(opt)
             .await
             .expect("failed to create the postgres db connection"),
         lite_interface: LiteInterface::new()

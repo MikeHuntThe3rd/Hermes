@@ -245,11 +245,11 @@ pub async fn get_channel_messages_from(
 
 pub async fn pull(
     _auth: AuthUser,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
     Path(object_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, InternalError> {
     let obj: Object = state
-        .ps_interface
+        .pg_interface
         .select_one::<Uuid, Object>((Object::id_columns(), &[object_id]))
         .await?;
 
