@@ -43,12 +43,12 @@ pub struct Msg {
 }
 
 pub async fn fetch_guild_member(
-    state: AppState,
+    mut state: AppState,
     guild_id: &Uuid,
     member_id: &Uuid,
 ) -> Result<Guild_Member, InternalError> {
     let member: Guild_Member = state
-        .ps_interface
+        .pg_interface
         .select_one((&["guild_id", "member_id"], &[guild_id, member_id]))
         .await?;
 

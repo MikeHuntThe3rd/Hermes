@@ -4,12 +4,12 @@ use std::{ffi::OsString, time::Duration};
 
 use tokio::fs as tfs;
 
-pub async fn cleaner_subprocess(state: AppState) {
+pub async fn cleaner_subprocess(mut state: AppState) {
     loop {
         tokio::time::sleep(Duration::from_mins(5)).await;
 
         let tracked_objs: Vec<Object> = state
-            .ps_interface
+            .pg_interface
             .select_many::<i32, Object>(None, None)
             .await
             .unwrap_or(vec![]);

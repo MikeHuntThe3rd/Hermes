@@ -64,11 +64,11 @@ impl PgInterface<DbPool> {
     }
 }
 
-pub struct DbTransaction<'t> {
-    conn: Transaction<'t, Postgres>,
+pub struct DbTransaction {
+    conn: Transaction<'static, Postgres>,
 }
 
-impl<'t> Connect for DbTransaction<'t> {
+impl Connect for DbTransaction {
     type Conn<'a>
         = &'a mut PgConnection
     where
@@ -79,17 +79,17 @@ impl<'t> Connect for DbTransaction<'t> {
     }
 }
 
-impl<'t> PgInterface<DbTransaction<'t>> {
-    pub async fn begin_nested_transaction(&mut self) -> Result<DbTransaction, InternalError> {
-        return Ok(DbTransaction {
-            conn: self
-                .connector
-                .conn
-                .begin()
-                .await
-                .map_err(|_| InternalError::DbError)?,
-        });
-    }
+impl PgInterface<DbTransaction> {
+    // pub async fn begin_nested_transaction(&mut self) -> Result<DbTransaction, InternalError> {
+    //     return Ok(DbTransaction {
+    //         conn: self
+    //             .connector
+    //             .conn
+    //             .begin()
+    //             .await
+    //             .map_err(|_| InternalError::DbError)?,
+    //     });
+    // }
 
     pub async fn commit(self) -> Result<(), InternalError> {
         return self
